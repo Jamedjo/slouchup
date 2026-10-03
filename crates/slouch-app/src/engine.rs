@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::art::Mood;
 use crate::camera_view::FrameSlot;
 use crate::config;
+use crate::frames;
 use crate::notifier::Notifier;
 
 const MODEL: &[u8] = include_bytes!("../../../models/face_detection_yunet_2023mar.onnx");
@@ -296,9 +297,8 @@ impl Engine {
     /// Take the newest frame and find the face in it, at half resolution for speed.
     fn observe(&mut self) -> Option<Observation> {
         let frame = self.latest.lock().unwrap().take()?;
-        let rgb = cameras::to_rgb8(&frame).ok()?;
-        let (width, height) = (frame.width as usize / 2, frame.height as usize / 2);
-        let small = halve(&rgb, frame.width as usize, frame.height as usize);
+        let small = frames::half_size(&frame)?;
+        let (width, height) = (small.width, small.height);
         self.view.frame_size = (frame.width as f32, frame.height as f32);
         if self.detector.is_none() {
             self.detector =
@@ -308,7 +308,7 @@ impl Engine {
             .detector
             .as_ref()
             .unwrap()
-            .detect(&small, width, height)
+            .detect(&small.rgb, width, height)
         {
             Ok(faces) => faces
                 .into_iter()
@@ -318,12 +318,7 @@ impl Engine {
                 None
             }
         };
-        let grey = small
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .map(|[r, g, b]| ((*r as u32 * 77 + *g as u32 * 150 + *b as u32 * 29) >> 8) as u8)
-            .collect();
+        let grey = small.grey;
         Some(Observation {
             grey,
             width,
@@ -554,26 +549,6 @@ impl Engine {
         self.results_until = Some(Instant::now() + RESULTS_SHOWN);
         true
     }
-}
-
-/// Average 2x2 blocks of packed RGB.
-fn halve(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
-    let (w, h) = (width / 2, height / 2);
-    let mut out = Vec::with_capacity(w * h * 3);
-    for y in 0..h {
-        let (top, bottom) = (2 * y * width * 3, (2 * y + 1) * width * 3);
-        for x in 0..w {
-            for c in 0..3 {
-                let i = 2 * x * 3 + c;
-                let sum = rgb[top + i] as u16
-                    + rgb[top + i + 3] as u16
-                    + rgb[bottom + i] as u16
-                    + rgb[bottom + i + 3] as u16;
-                out.push((sum / 4) as u8);
-            }
-        }
-    }
-    out
 }
 
 fn median(mut values: Vec<f32>) -> f32 {

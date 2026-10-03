@@ -2,6 +2,7 @@ mod art;
 mod camera_view;
 mod config;
 mod engine;
+mod frames;
 mod notifier;
 mod ui;
 

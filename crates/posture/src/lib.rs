@@ -127,3 +127,39 @@ impl std::fmt::Display for Problem {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thresholds_read_the_python_versions_file() {
+        let saved = r#"{"threshold": 0.5874, "lean": 0.2527}"#;
+        let thresholds: Thresholds = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            thresholds,
+            Thresholds {
+                drop: 0.5874,
+                lean: 0.2527
+            }
+        );
+    }
+
+    #[test]
+    fn leaning_is_reported_when_it_is_the_worse_problem() {
+        let baseline = Posture {
+            eye_y: 100.0,
+            size: 40.0,
+        };
+        let reading = Reading::new(
+            Posture {
+                eye_y: 104.0,
+                size: 50.0,
+            },
+            baseline,
+        );
+        let (ratio, problem) = reading.worst(Thresholds::default());
+        assert!(ratio > 1.0);
+        assert_eq!(problem, Problem::Leaning(0.25));
+    }
+}

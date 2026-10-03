@@ -131,3 +131,33 @@ pub fn CameraView(slot: FrameSlot) -> Element {
         script { dangerous_inner_html: "{PREVIEW_JS}" }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rgba_pictures_encode_with_the_preview_script_header() {
+        let slot = FrameSlot::default();
+        slot.publish(Picture::Rgba {
+            width: 2,
+            height: 1,
+            pixels: Arc::new(vec![1, 2, 3, 4, 5, 6, 7, 8]),
+        });
+        let body = slot.encode();
+        assert_eq!(&body[..4], b"CAMS");
+        assert_eq!(body[5], FORMAT_RGBA);
+        assert_eq!(u32::from_le_bytes(body[8..12].try_into().unwrap()), 2);
+        assert_eq!(
+            u32::from_le_bytes(body[20..24].try_into().unwrap()),
+            1,
+            "counter"
+        );
+        assert_eq!(&body[24..], &[1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn an_empty_slot_encodes_as_no_frame() {
+        assert_eq!(FrameSlot::default().encode()[5], FORMAT_NONE);
+    }
+}

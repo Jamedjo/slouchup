@@ -151,3 +151,55 @@ fn person_svg(shape: Shape) -> String {
         cy = 240.0 + sink,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use posture::{Posture, Reading, Thresholds};
+
+    use super::*;
+    use crate::frames::half_size;
+
+    const MODEL: &[u8] = include_bytes!("../../../models/face_detection_yunet_2023mar.onnx");
+
+    /// The demo person in `pose`, run through the same steps as a camera frame.
+    fn posture_of(pose: Pose, detector: &yunet::Detector) -> Posture {
+        let pixels = crate::art::rasterise(&person_svg(Shape::of(pose)), WIDTH, HEIGHT);
+        let picture = Picture::Rgba {
+            width: WIDTH,
+            height: HEIGHT,
+            pixels: Arc::new(pixels),
+        };
+        let half = half_size(&picture).expect("RGBA always converts");
+        let faces = detector
+            .detect(&half.rgb, half.width, half.height)
+            .expect("detection runs");
+        let l = faces
+            .first()
+            .unwrap_or_else(|| panic!("no face found in {pose:?}"))
+            .landmarks;
+        Posture::from_landmarks(l.right_eye, l.left_eye, l.right_mouth, l.left_mouth, 0.0)
+    }
+
+    #[test]
+    fn slumping_and_leaning_cross_the_default_thresholds() {
+        let detector =
+            yunet::Detector::new(MODEL, (WIDTH / 2) as usize, (HEIGHT / 2) as usize).unwrap();
+        let upright = posture_of(Pose::Upright, &detector);
+        let limits = Thresholds::default();
+
+        let slump = Reading::new(posture_of(Pose::Slump, &detector), upright);
+        assert!(slump.drop > limits.drop, "slump drop {:.2}", slump.drop);
+        assert!(slump.lean < limits.lean, "slump lean {:.2}", slump.lean);
+
+        let lean = Reading::new(posture_of(Pose::Lean, &detector), upright);
+        assert!(lean.lean > limits.lean, "lean {:.2}", lean.lean);
+    }
+
+    #[test]
+    fn routine_cycles_through_every_pose() {
+        let poses: Vec<Pose> = (0..24).map(|s| routine(Duration::from_secs(s))).collect();
+        for pose in [Pose::Upright, Pose::Slump, Pose::Lean] {
+            assert!(poses.contains(&pose), "{pose:?} never shown");
+        }
+    }
+}

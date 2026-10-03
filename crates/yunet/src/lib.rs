@@ -198,3 +198,46 @@ fn overlap(a: &Face, b: &Face) -> f32 {
     let intersection = width * height;
     intersection / (a.width * a.height + b.width * b.height - intersection)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn face(x: f32, score: f32) -> Face {
+        let point = [0.0, 0.0];
+        let landmarks = Landmarks {
+            right_eye: point,
+            left_eye: point,
+            nose: point,
+            right_mouth: point,
+            left_mouth: point,
+        };
+        Face {
+            x,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            landmarks,
+            score,
+        }
+    }
+
+    #[test]
+    fn overlapping_detections_keep_only_the_most_confident() {
+        let kept =
+            non_maximum_suppression(vec![face(0.0, 0.8), face(1.0, 0.9), face(50.0, 0.75)], 0.3);
+        let scores: Vec<f32> = kept.iter().map(|f| f.score).collect();
+        assert_eq!(scores, [0.9, 0.75]);
+    }
+
+    #[test]
+    fn rejects_images_larger_than_the_detector() {
+        let detector = Detector::new(
+            include_bytes!("../../../models/face_detection_yunet_2023mar.onnx"),
+            64,
+            64,
+        )
+        .unwrap();
+        assert!(detector.detect(&vec![0; 128 * 64 * 3], 128, 64).is_err());
+    }
+}

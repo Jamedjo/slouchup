@@ -437,10 +437,11 @@ impl Engine {
     }
 
     /// Collect commands that arrive mid-calibration or mid-game, and say whether one of them
-    /// should cut it short. Further game requests are dropped, since one is already running.
-    fn interrupted(&mut self) -> bool {
+    /// should cut it short. Game requests during a game are dropped, since one is running;
+    /// during calibration they wait their turn.
+    fn interrupted(&mut self, in_game: bool) -> bool {
         while let Ok(command) = self.commands.try_recv() {
-            if !matches!(command, Command::Game { .. }) {
+            if !(in_game && matches!(command, Command::Game { .. })) {
                 self.pending.push_back(command);
             }
         }
@@ -534,7 +535,7 @@ impl Engine {
         let end = Instant::now() + CALIBRATION;
         while Instant::now() < end {
             std::thread::sleep(BUSY_INTERVAL);
-            if self.interrupted() {
+            if self.interrupted(false) {
                 return false;
             }
             let Some(seen) = self.observe() else { continue };
@@ -584,7 +585,7 @@ impl Engine {
             let start = Instant::now();
             while start.elapsed() < GAME_SETTLE + GAME_RECORD {
                 std::thread::sleep(BUSY_INTERVAL);
-                if self.interrupted() {
+                if self.interrupted(true) {
                     self.abandon_game();
                     return false;
                 }

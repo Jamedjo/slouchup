@@ -11,11 +11,11 @@ use serde::Serialize;
 use crate::art::Mood;
 use crate::camera_view::FrameSlot;
 use crate::config;
+use crate::finder::FaceFinder;
 use crate::frames;
 use crate::notifier::Notifier;
 use crate::source::{Capture, Source};
 
-const MODEL: &[u8] = include_bytes!("../../../models/face_detection_yunet_2023mar.onnx");
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
 const BUSY_INTERVAL: Duration = Duration::from_millis(100);
 const CALIBRATION: Duration = Duration::from_secs(3);
@@ -158,7 +158,7 @@ struct GameRecord {
 pub struct Engine {
     capture: Capture,
     persist: bool,
-    detector: Option<yunet::Detector>,
+    finder: FaceFinder,
     notifier: Notifier,
     events: UnboundedSender<View>,
     commands: Receiver<Command>,
@@ -186,7 +186,7 @@ impl Engine {
         let engine = Engine {
             capture,
             persist,
-            detector: None,
+            finder: FaceFinder::new(),
             notifier,
             events,
             commands,
@@ -286,24 +286,7 @@ impl Engine {
         let (width, height) = (small.width, small.height);
         let (frame_width, frame_height) = frame.size();
         self.view.frame_size = (frame_width as f32, frame_height as f32);
-        if self.detector.is_none() {
-            self.detector =
-                Some(yunet::Detector::new(MODEL, width, height).expect("bundled model loads"));
-        }
-        let face = match self
-            .detector
-            .as_ref()
-            .unwrap()
-            .detect(&small.rgb, width, height)
-        {
-            Ok(faces) => faces
-                .into_iter()
-                .max_by(|a, b| (a.width * a.height).total_cmp(&(b.width * b.height))),
-            Err(error) => {
-                tracing::warn!("detection failed: {error}");
-                None
-            }
-        };
+        let face = self.finder.find(&small.rgb, width, height);
         let grey = small.grey;
         Some(Observation {
             grey,

@@ -7,6 +7,8 @@
 
 use tract_onnx::prelude::*;
 
+pub use tract_onnx::prelude::{TractError as Error, TractResult as Result};
+
 /// The largest feature-map stride; input sides must be multiples of it.
 const MAX_STRIDE: usize = 32;
 const STRIDES: [usize; 3] = [8, 16, 32];

@@ -196,6 +196,43 @@ mod tests {
     }
 
     #[test]
+    /// The tight crop trims a little context the detector uses, which moves readings by up to
+    /// a few percent: under a tenth of any limit the calibration game has set.
+    fn cropped_search_finds_the_same_landmarks_as_the_whole_frame() {
+        let mut finder = crate::finder::FaceFinder::new();
+        let whole =
+            yunet::Detector::new(MODEL, (WIDTH / 2) as usize, (HEIGHT / 2) as usize).unwrap();
+        // The first pose primes the finder from the whole frame; the rest go through the crop.
+        for pose in [Pose::Upright, Pose::Upright, Pose::Slump, Pose::Lean] {
+            let pixels = crate::art::rasterise(&person_svg(Shape::of(pose)), WIDTH, HEIGHT);
+            let picture = Picture::Rgba {
+                width: WIDTH,
+                height: HEIGHT,
+                pixels: Arc::new(pixels),
+            };
+            let half = half_size(&picture).unwrap();
+            // A pose arrives all at once here, so let the square recentre before comparing.
+            finder.find(&half.rgb, half.width, half.height);
+            let found = finder
+                .find(&half.rgb, half.width, half.height)
+                .expect("finder sees the face");
+            let reference = whole.detect(&half.rgb, half.width, half.height).unwrap()[0];
+            let posture = |f: yunet::Face| {
+                let l = f.landmarks;
+                Posture::from_landmarks(l.right_eye, l.left_eye, l.right_mouth, l.left_mouth, 0.0)
+            };
+            let (found, reference) = (posture(found), posture(reference));
+            let drop = (found.eye_y - reference.eye_y).abs() / reference.size;
+            let size = (found.size / reference.size - 1.0).abs();
+            eprintln!("{pose:?}: eye line off by {drop:.3} face sizes, size by {size:.3}");
+            assert!(
+                drop < 0.03 && size < 0.03,
+                "{pose:?}: drop {drop:.3}, size {size:.3}"
+            );
+        }
+    }
+
+    #[test]
     fn routine_cycles_through_every_pose() {
         let poses: Vec<Pose> = (0..24).map(|s| routine(Duration::from_secs(s))).collect();
         for pose in [Pose::Upright, Pose::Slump, Pose::Lean] {

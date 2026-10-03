@@ -6,6 +6,7 @@ mod camera_view;
 mod config;
 mod demo;
 mod engine;
+mod finder;
 mod frames;
 mod notifier;
 mod screens;

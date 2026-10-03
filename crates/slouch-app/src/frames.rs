@@ -68,6 +68,26 @@ pub fn half_size(picture: &Picture) -> Option<Half> {
     })
 }
 
+/// A `size` x `size` window of packed RGB starting at `left`, `top`. Parts beyond the image
+/// are black, as the face detector pads a whole frame.
+pub fn crop(
+    rgb: &[u8],
+    width: usize,
+    height: usize,
+    left: usize,
+    top: usize,
+    size: usize,
+) -> Vec<u8> {
+    let mut out = vec![0u8; size * size * 3];
+    let columns = size.min(width.saturating_sub(left));
+    for row in 0..size.min(height.saturating_sub(top)) {
+        let from = ((top + row) * width + left) * 3;
+        out[row * size * 3..(row * size + columns) * 3]
+            .copy_from_slice(&rgb[from..from + columns * 3]);
+    }
+    out
+}
+
 /// Each YUYV group of four bytes is two pixels sharing their colour, so taking one group per
 /// output pixel from every other row halves the frame without converting the rest.
 fn yuyv_half(data: &[u8], width: usize, height: usize, stride: usize) -> Half {
@@ -140,6 +160,16 @@ mod tests {
             }
         }
         data
+    }
+
+    #[test]
+    fn crop_copies_the_window_and_pads_past_the_edge() {
+        let rgb: Vec<u8> = (1..=4 * 4 * 3).map(|i| i as u8).collect();
+        let window = crop(&rgb, 4, 4, 3, 2, 2);
+        let pixel = |x: usize, y: usize| &rgb[(y * 4 + x) * 3..(y * 4 + x) * 3 + 3];
+        assert_eq!(&window[..3], pixel(3, 2));
+        assert_eq!(&window[3..6], &[0, 0, 0], "past the right edge");
+        assert_eq!(&window[6..9], pixel(3, 3));
     }
 
     #[test]

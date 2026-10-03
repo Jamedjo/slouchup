@@ -4,10 +4,12 @@
 mod art;
 mod camera_view;
 mod config;
+mod demo;
 mod engine;
 mod frames;
 mod notifier;
 mod screens;
+mod source;
 mod ui;
 
 use std::sync::{Arc, Mutex};
@@ -18,6 +20,7 @@ use crate::camera_view::FrameSlot;
 use crate::config::{APP_NAME, cache_dir};
 use crate::engine::Engine;
 use crate::notifier::Notifier;
+use crate::source::Source;
 
 fn main() {
     let args = config::parse_args();
@@ -27,19 +30,29 @@ fn main() {
         Notifier::new(files).nag("You're 20% closer to the screen than usual.");
         return;
     }
-    let _lock = match single_instance(&cache) {
-        Some(lock) => lock,
-        None => {
-            eprintln!("{APP_NAME} is already running");
-            std::process::exit(1);
+    // The demo runs alongside the real app, so screenshots don't mean quitting it.
+    let _lock = if args.demo {
+        None
+    } else {
+        match single_instance(&cache) {
+            Some(lock) => Some(lock),
+            None => {
+                eprintln!("{APP_NAME} is already running");
+                std::process::exit(1);
+            }
         }
     };
 
     let (command_tx, command_rx) = crossbeam_channel::unbounded();
     let (view_tx, view_rx) = futures_channel::mpsc::unbounded();
     let preview = FrameSlot::default();
+    let source = if args.demo {
+        Source::Demo
+    } else {
+        Source::Camera(args.camera)
+    };
     if let Err(error) = Engine::start(
-        args.camera,
+        source,
         preview.clone(),
         Notifier::new(files.clone()),
         view_tx,
@@ -51,7 +64,7 @@ fn main() {
     let bridge = ui::Bridge {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),
-        start_with_game: args.game || !config::has_thresholds(),
+        start_with_game: args.game || (!args.demo && !config::has_thresholds()),
         preview,
     };
 

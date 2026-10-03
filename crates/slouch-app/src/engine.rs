@@ -1,11 +1,9 @@
 //! The detection loop: camera frames in, posture decisions, notifications and UI snapshots out.
 
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use camera_drift::{CameraDrift, Grey, Rect};
 use crossbeam_channel::Receiver;
-use dioxus_cameras::cameras::{self, Frame, PixelFormat, Resolution, StreamConfig};
 use futures_channel::mpsc::UnboundedSender;
 use posture::{Action, Posture, Reading, Sample, Settings, State, Step, Thresholds, Tracker};
 use serde::Serialize;
@@ -15,6 +13,7 @@ use crate::camera_view::FrameSlot;
 use crate::config;
 use crate::frames;
 use crate::notifier::Notifier;
+use crate::source::{Capture, Source};
 
 const MODEL: &[u8] = include_bytes!("../../../models/face_detection_yunet_2023mar.onnx");
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
@@ -157,8 +156,8 @@ struct GameRecord {
 }
 
 pub struct Engine {
-    latest: Arc<Mutex<Option<Frame>>>,
-    pump: cameras::pump::Pump,
+    capture: Capture,
+    persist: bool,
     detector: Option<yunet::Detector>,
     notifier: Notifier,
     events: UnboundedSender<View>,
@@ -175,45 +174,28 @@ pub struct Engine {
 
 impl Engine {
     pub fn start(
-        camera: usize,
+        source: Source,
         preview: FrameSlot,
         notifier: Notifier,
         events: UnboundedSender<View>,
         commands: Receiver<Command>,
     ) -> Result<(), String> {
-        let mut devices = cameras::devices().map_err(|e| format!("listing cameras: {e}"))?;
-        // Number cameras like OpenCV does: by device path, skipping metadata nodes that can't capture.
-        devices.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-        let device = devices
-            .into_iter()
-            .filter(|d| cameras::probe(d).is_ok_and(|caps| !caps.formats.is_empty()))
-            .nth(camera)
-            .ok_or_else(|| format!("no camera {camera}"))?;
-        let config = choose_format(&device)?;
-        let opened =
-            cameras::open(&device, config).map_err(|e| format!("opening {}: {e}", device.name))?;
-        tracing::info!("camera: {}", device.name);
-
-        let latest = Arc::new(Mutex::new(None));
-        let latest_for_pump = latest.clone();
-        let mut frames = 0u64;
-        let pump = cameras::pump::spawn(opened, move |frame| {
-            frames += 1;
-            // The preview converts every frame it's given to RGBA; half the camera's rate is plenty.
-            if frames.is_multiple_of(2) {
-                preview.publish(frame.clone());
-            }
-            *latest_for_pump.lock().unwrap() = Some(frame);
-        });
+        // A demo is for looking at, so it mustn't overwrite the real calibration.
+        let persist = !matches!(source, Source::Demo);
+        let capture = Capture::start(source, preview)?;
         let engine = Engine {
-            latest,
-            pump,
+            capture,
+            persist,
             detector: None,
             notifier,
             events,
             commands,
             settings: Settings {
-                thresholds: config::load_thresholds(),
+                thresholds: if persist {
+                    config::load_thresholds()
+                } else {
+                    Default::default()
+                },
                 ..Settings::default()
             },
             tracker: None,
@@ -272,7 +254,7 @@ impl Engine {
                     }
                     Command::Pause(paused) => {
                         self.paused = paused;
-                        cameras::pump::set_active(&self.pump, !paused);
+                        self.capture.set_active(!paused);
                     }
                 }
             }
@@ -299,10 +281,11 @@ impl Engine {
 
     /// Take the newest frame and find the face in it, at half resolution for speed.
     fn observe(&mut self) -> Option<Observation> {
-        let frame = self.latest.lock().unwrap().take()?;
+        let frame = self.capture.take()?;
         let small = frames::half_size(&frame)?;
         let (width, height) = (small.width, small.height);
-        self.view.frame_size = (frame.width as f32, frame.height as f32);
+        let (frame_width, frame_height) = frame.size();
+        self.view.frame_size = (frame_width as f32, frame_height as f32);
         if self.detector.is_none() {
             self.detector =
                 Some(yunet::Detector::new(MODEL, width, height).expect("bundled model loads"));
@@ -434,6 +417,7 @@ impl Engine {
         let mut records = Vec::new();
         for (index, step) in steps.iter().enumerate() {
             let title = format!("{}/{}  {}", index + 1, steps.len(), step.prompt);
+            self.capture.act(Some(step.pose));
             let start = Instant::now();
             while start.elapsed() < GAME_SETTLE + GAME_RECORD {
                 std::thread::sleep(BUSY_INTERVAL);
@@ -504,6 +488,7 @@ impl Engine {
         records: Vec<GameRecord>,
         drift: Option<CameraDrift>,
     ) -> bool {
+        self.capture.act(None);
         let samples: Vec<Sample> = records.iter().map(|r| r.sample).collect();
         let result = posture::score_game(steps, &samples);
         let dump = serde_json::json!({
@@ -512,14 +497,17 @@ impl Engine {
             "result": result,
             "thresholds_before": self.settings.thresholds,
         });
-        let dir = config::games_dir();
-        let path = dir.join(format!("{}.json", unix_seconds()));
-        if let Err(error) =
-            std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, dump.to_string()))
-        {
-            tracing::warn!("couldn't save game: {error}");
+        tracing::info!("game result: {result:?}");
+        if self.persist {
+            let dir = config::games_dir();
+            let path = dir.join(format!("{}.json", unix_seconds()));
+            match std::fs::create_dir_all(&dir)
+                .and_then(|_| std::fs::write(&path, dump.to_string()))
+            {
+                Ok(()) => tracing::info!("game saved to {}", path.display()),
+                Err(error) => tracing::warn!("couldn't save game: {error}"),
+            }
         }
-        tracing::info!("game saved to {}: {result:?}", path.display());
 
         let (Some(result), Some(drift)) = (result, drift) else {
             self.view.look_at = None;
@@ -534,7 +522,9 @@ impl Engine {
             return false;
         };
         self.settings.thresholds = result.thresholds(self.settings.thresholds);
-        if let Err(error) = config::save_thresholds(self.settings.thresholds) {
+        if self.persist
+            && let Err(error) = config::save_thresholds(self.settings.thresholds)
+        {
             tracing::warn!("couldn't save thresholds: {error}");
         }
         self.start_tracking(result.baseline, drift);
@@ -569,47 +559,6 @@ impl Engine {
         self.results_until = Some(Instant::now() + RESULTS_SHOWN);
         true
     }
-}
-
-/// 640x480 in a format that is cheap to read, or failing that the nearest size on offer.
-fn choose_format(device: &cameras::Device) -> Result<StreamConfig, String> {
-    let wanted = Resolution {
-        width: 640,
-        height: 480,
-    };
-    let capabilities =
-        cameras::probe(device).map_err(|e| format!("probing {}: {e}", device.name))?;
-    let cheapest_first = [
-        PixelFormat::Yuyv,
-        PixelFormat::Nv12,
-        PixelFormat::Bgra8,
-        PixelFormat::Rgb8,
-        PixelFormat::Mjpeg,
-    ];
-    let format = cheapest_first
-        .into_iter()
-        .find_map(|pixel_format| {
-            capabilities
-                .formats
-                .iter()
-                .find(|f| f.pixel_format == pixel_format && f.resolution == wanted)
-                .cloned()
-        })
-        .or_else(|| {
-            let ideal = StreamConfig {
-                resolution: wanted,
-                framerate: 30,
-                pixel_format: PixelFormat::Yuyv,
-            };
-            cameras::best_format(&capabilities, &ideal)
-        })
-        .ok_or_else(|| format!("{} offers no video formats", device.name))?;
-    let range = format.framerate_range;
-    Ok(StreamConfig {
-        resolution: format.resolution,
-        framerate: 30f64.clamp(range.min, range.max).round() as u32,
-        pixel_format: format.pixel_format,
-    })
 }
 
 fn median(mut values: Vec<f32>) -> f32 {

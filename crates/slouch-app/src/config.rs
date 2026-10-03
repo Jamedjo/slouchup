@@ -45,6 +45,7 @@ pub fn save_thresholds(thresholds: Thresholds) -> std::io::Result<()> {
 #[derive(Clone, Debug, Default)]
 pub struct Args {
     pub camera: usize,
+    pub demo: bool,
     pub show: bool,
     pub game: bool,
     pub test_notification: bool,
@@ -56,11 +57,14 @@ pub fn parse_args() -> Args {
     while let Some(arg) = raw.next() {
         match arg.as_str() {
             "--show" => args.show = true,
+            "--demo" => args.demo = true,
             "--game" => args.game = true,
             "--test-notification" => args.test_notification = true,
             "--camera" => args.camera = raw.next().and_then(|n| n.parse().ok()).unwrap_or(0),
             "--help" | "-h" => {
-                println!("Usage: slouch [--show] [--game] [--camera N] [--test-notification]");
+                println!(
+                    "Usage: slouch [--show] [--game] [--camera N | --demo] [--test-notification]"
+                );
                 std::process::exit(0);
             }
             other => {

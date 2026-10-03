@@ -14,6 +14,8 @@ use dioxus::prelude::*;
 use dioxus_cameras::PREVIEW_JS;
 use dioxus_cameras::cameras::{self, Frame, PixelFormat};
 
+use crate::frames::Picture;
+
 const HANDLER: &str = "camera";
 const MAGIC: &[u8; 4] = b"CAMS";
 const VERSION: u8 = 1;
@@ -27,7 +29,7 @@ type Encoded = (u32, Vec<u8>);
 /// The newest camera frame, shared between the capture thread and the preview.
 #[derive(Clone, Default)]
 pub struct FrameSlot {
-    frame: Arc<Mutex<Option<Frame>>>,
+    frame: Arc<Mutex<Option<Picture>>>,
     counter: Arc<AtomicU32>,
     /// The last encoded response, so polls between camera frames don't convert again.
     encoded: Arc<Mutex<Option<Encoded>>>,
@@ -40,7 +42,7 @@ impl PartialEq for FrameSlot {
 }
 
 impl FrameSlot {
-    pub fn publish(&self, frame: Frame) {
+    pub fn publish(&self, frame: Picture) {
         *self.frame.lock().unwrap() = Some(frame);
         self.counter.fetch_add(1, Ordering::Release);
     }
@@ -55,7 +57,16 @@ impl FrameSlot {
         }
         let frame = self.frame.lock().unwrap().clone();
         let body = match frame {
-            Some(frame) => encode_frame(&frame, counter),
+            Some(Picture::Camera(frame)) => encode_frame(&frame, counter),
+            Some(Picture::Rgba {
+                width,
+                height,
+                pixels,
+            }) => {
+                let mut body = header(FORMAT_RGBA, width, height, width * 4, counter);
+                body.extend_from_slice(&pixels);
+                body
+            }
             None => header(FORMAT_NONE, 0, 0, 0, counter),
         };
         *encoded = Some((counter, body.clone()));

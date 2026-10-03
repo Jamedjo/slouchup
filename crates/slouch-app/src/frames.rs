@@ -1,6 +1,29 @@
 //! Camera frames shrunk to the half size detection runs at.
 
+use std::sync::Arc;
+
 use dioxus_cameras::cameras::{self, Frame, PixelFormat};
+
+/// A frame from the webcam, or one the demo drew.
+#[derive(Clone)]
+pub enum Picture {
+    Camera(Frame),
+    /// Straight RGBA. The `cameras` crate's own frame type can't be built outside it.
+    Rgba {
+        width: u32,
+        height: u32,
+        pixels: Arc<Vec<u8>>,
+    },
+}
+
+impl Picture {
+    pub fn size(&self) -> (u32, u32) {
+        match self {
+            Picture::Camera(frame) => (frame.width, frame.height),
+            Picture::Rgba { width, height, .. } => (*width, *height),
+        }
+    }
+}
 
 /// A frame at half width and height: packed RGB for the face detector and grey for tilt tracking.
 pub struct Half {
@@ -10,17 +33,27 @@ pub struct Half {
     pub height: usize,
 }
 
-pub fn half_size(frame: &Frame) -> Option<Half> {
-    let (width, height) = (frame.width as usize, frame.height as usize);
-    if frame.pixel_format == PixelFormat::Yuyv {
-        return Some(yuyv_half(
-            &frame.plane_primary,
-            width,
-            height,
-            frame.stride as usize,
-        ));
-    }
-    let rgb = halve(&cameras::to_rgb8(frame).ok()?, width, height);
+pub fn half_size(picture: &Picture) -> Option<Half> {
+    let (width, height) = picture.size();
+    let (width, height) = (width as usize, height as usize);
+    let rgb = match picture {
+        Picture::Camera(frame) if frame.pixel_format == PixelFormat::Yuyv => {
+            return Some(yuyv_half(
+                &frame.plane_primary,
+                width,
+                height,
+                frame.stride as usize,
+            ));
+        }
+        Picture::Camera(frame) => cameras::to_rgb8(frame).ok()?,
+        Picture::Rgba { pixels, .. } => pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|&[r, g, b, _]| [r, g, b])
+            .collect(),
+    };
+    let rgb = halve(&rgb, width, height);
     let grey = rgb
         .as_chunks::<3>()
         .0

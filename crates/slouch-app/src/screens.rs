@@ -57,25 +57,26 @@ pub fn built_in(monitors: &[MonitorHandle]) -> Option<MonitorHandle> {
 /// macOS names its panel "Built-in …". GTK names monitors by model instead of connector, so on
 /// Linux the model is read from the EDID of internal connectors: the panel's name if it has
 /// one, otherwise its product code in hex, as Wayland compositors report it.
+#[cfg(target_os = "linux")]
 fn built_in_names() -> Vec<String> {
-    let mut names = Vec::new();
-    #[cfg(target_os = "linux")]
-    if let Ok(connectors) = std::fs::read_dir("/sys/class/drm") {
-        for connector in connectors.flatten() {
-            let file_name = connector.file_name();
-            let connector_name = file_name.to_string_lossy();
-            if !["eDP", "LVDS", "DSI"]
+    let Ok(connectors) = std::fs::read_dir("/sys/class/drm") else {
+        return Vec::new();
+    };
+    connectors
+        .flatten()
+        .filter(|c| {
+            ["eDP", "LVDS", "DSI"]
                 .iter()
-                .any(|kind| connector_name.contains(kind))
-            {
-                continue;
-            }
-            if let Ok(edid) = std::fs::read(connector.path().join("edid")) {
-                names.extend(edid_model(&edid));
-            }
-        }
-    }
-    names
+                .any(|kind| c.file_name().to_string_lossy().contains(kind))
+        })
+        .filter_map(|c| std::fs::read(c.path().join("edid")).ok())
+        .filter_map(|edid| edid_model(&edid))
+        .collect()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn built_in_names() -> Vec<String> {
+    Vec::new()
 }
 
 #[cfg(target_os = "linux")]

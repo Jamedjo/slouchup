@@ -189,17 +189,9 @@ impl Engine {
             .filter(|d| cameras::probe(d).is_ok_and(|caps| !caps.formats.is_empty()))
             .nth(camera)
             .ok_or_else(|| format!("no camera {camera}"))?;
-        let stream = |pixel_format| StreamConfig {
-            resolution: Resolution {
-                width: 640,
-                height: 480,
-            },
-            framerate: 30,
-            pixel_format,
-        };
-        let opened = cameras::open(&device, stream(PixelFormat::Yuyv))
-            .or_else(|_| cameras::open(&device, stream(PixelFormat::Mjpeg)))
-            .map_err(|e| format!("opening {}: {e}", device.name))?;
+        let config = choose_format(&device)?;
+        let opened =
+            cameras::open(&device, config).map_err(|e| format!("opening {}: {e}", device.name))?;
         tracing::info!("camera: {}", device.name);
 
         let latest = Arc::new(Mutex::new(None));
@@ -577,6 +569,47 @@ impl Engine {
         self.results_until = Some(Instant::now() + RESULTS_SHOWN);
         true
     }
+}
+
+/// 640x480 in a format that is cheap to read, or failing that the nearest size on offer.
+fn choose_format(device: &cameras::Device) -> Result<StreamConfig, String> {
+    let wanted = Resolution {
+        width: 640,
+        height: 480,
+    };
+    let capabilities =
+        cameras::probe(device).map_err(|e| format!("probing {}: {e}", device.name))?;
+    let cheapest_first = [
+        PixelFormat::Yuyv,
+        PixelFormat::Nv12,
+        PixelFormat::Bgra8,
+        PixelFormat::Rgb8,
+        PixelFormat::Mjpeg,
+    ];
+    let format = cheapest_first
+        .into_iter()
+        .find_map(|pixel_format| {
+            capabilities
+                .formats
+                .iter()
+                .find(|f| f.pixel_format == pixel_format && f.resolution == wanted)
+                .cloned()
+        })
+        .or_else(|| {
+            let ideal = StreamConfig {
+                resolution: wanted,
+                framerate: 30,
+                pixel_format: PixelFormat::Yuyv,
+            };
+            cameras::best_format(&capabilities, &ideal)
+        })
+        .ok_or_else(|| format!("{} offers no video formats", device.name))?;
+    let range = format.framerate_range;
+    Ok(StreamConfig {
+        resolution: format.resolution,
+        framerate: 30f64.clamp(range.min, range.max).round() as u32,
+        pixel_format: format.pixel_format,
+    })
 }
 
 fn median(mut values: Vec<f32>) -> f32 {

@@ -6,3 +6,8 @@ members = ["crates/*"]
 edition = "2024"
 rust-version = "1.91"
 license = "MIT OR Apache-2.0"
+
+# Vectorised 3x3 depthwise convolution and 2x2 max pooling for x86, which make YuNet about four
+# times faster. Drop once tract ships equivalent kernels.
+[patch.crates-io]
+tract-core = { path = "vendor/tract-core" }

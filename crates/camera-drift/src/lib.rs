@@ -27,11 +27,22 @@ impl Rect {
 }
 
 /// A borrowed 8-bit greyscale image, tightly packed.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Grey<'a> {
-    pub pixels: &'a [u8],
-    pub width: usize,
-    pub height: usize,
+    pixels: &'a [u8],
+    width: usize,
+    height: usize,
+}
+
+impl<'a> Grey<'a> {
+    /// `None` unless `pixels` holds exactly `width * height` bytes.
+    pub fn new(pixels: &'a [u8], width: usize, height: usize) -> Option<Self> {
+        (pixels.len() == width * height).then_some(Self {
+            pixels,
+            width,
+            height,
+        })
+    }
 }
 
 const PATCH_HALF: isize = 6;
@@ -44,6 +55,8 @@ const MIN_SURVIVING: f32 = 0.4;
 const REACH_Y: f32 = 0.15;
 const REACH_X: f32 = 0.05;
 
+/// Tracks the background against a reference frame. See the crate docs.
+#[derive(Debug)]
 pub struct CameraDrift {
     reference: Pyramid,
     patches: Vec<(isize, isize)>,
@@ -84,7 +97,10 @@ impl CameraDrift {
             shifts.sort_by(f32::total_cmp);
             self.last = self.carried + shifts[shifts.len() / 2] / height;
         }
-        if (shifts.len() as f32) < self.patches.len() as f32 * MIN_SURVIVING {
+        // Too few patches to ever reach MIN_MATCHES (a dark or blank reference, say) also means
+        // starting again, or the estimate would be stuck where it is.
+        let too_few_tracked = (shifts.len() as f32) < self.patches.len() as f32 * MIN_SURVIVING;
+        if too_few_tracked || self.patches.len() < MIN_MATCHES {
             self.carried = self.last;
             self.patches = pick_patches(&current.fine, person);
             self.reference = current;
@@ -121,6 +137,7 @@ impl CameraDrift {
     }
 }
 
+#[derive(Debug)]
 struct Image {
     pixels: Vec<f32>,
     width: usize,
@@ -140,6 +157,7 @@ impl Image {
     }
 }
 
+#[derive(Debug)]
 struct Pyramid {
     fine: Image,
     coarse: Image,
@@ -177,6 +195,10 @@ fn pick_patches(image: &Image, person: Option<Rect>) -> Vec<(isize, isize)> {
     let cell = 3 * PATCH_HALF as usize;
     let margin = PATCH_HALF + 1;
     let mut candidates = Vec::new();
+    // The coarse level searches half-size patches at half resolution, so it needs this much too.
+    if image.width < 4 * margin as usize || image.height < 4 * margin as usize {
+        return Vec::new();
+    }
     for cy in (margin as usize..image.height - margin as usize).step_by(cell) {
         for cx in (margin as usize..image.width - margin as usize).step_by(cell) {
             let (x, y) = (cx as isize, cy as isize);
@@ -364,11 +386,7 @@ mod tests {
     }
 
     fn grey(pixels: &[u8]) -> Grey<'_> {
-        Grey {
-            pixels,
-            width: WIDTH,
-            height: HEIGHT,
-        }
+        Grey::new(pixels, WIDTH, HEIGHT).unwrap()
     }
 
     fn pixels(fraction: f32) -> f32 {
@@ -412,6 +430,28 @@ mod tests {
         }
         let shift = pixels(drift.update(grey(&frame), Some(face)));
         assert!(shift.abs() < 0.5, "measured {shift} with a still camera");
+    }
+
+    #[test]
+    fn recovers_from_a_blank_first_frame() {
+        let blank = vec![40u8; WIDTH * HEIGHT];
+        let world = scene(5);
+        let mut drift = CameraDrift::new(grey(&blank), None);
+        drift.update(grey(&view(&world, 0)), None);
+        let shift = pixels(drift.update(grey(&view(&world, 12)), None));
+        assert!(
+            (shift - 12.0).abs() < 0.5,
+            "stuck after a blank start: {shift}"
+        );
+    }
+
+    #[test]
+    fn tiny_frames_are_harmless() {
+        let tiny = [0u8; 6 * 5];
+        let tiny = Grey::new(&tiny, 6, 5).unwrap();
+        let mut drift = CameraDrift::new(tiny, None);
+        assert_eq!(drift.update(tiny, None), 0.0);
+        assert!(Grey::new(&[0; 10], 6, 5).is_none());
     }
 
     #[test]

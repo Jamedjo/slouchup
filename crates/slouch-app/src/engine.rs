@@ -123,11 +123,7 @@ struct Observation {
 
 impl Observation {
     fn grey(&self) -> Grey<'_> {
-        Grey {
-            pixels: &self.grey,
-            width: self.width,
-            height: self.height,
-        }
+        Grey::new(&self.grey, self.width, self.height).expect("grey frames match their size")
     }
 
     fn person(&self) -> Option<Rect> {

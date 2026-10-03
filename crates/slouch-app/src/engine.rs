@@ -23,6 +23,8 @@ const GAME_SETTLE: Duration = Duration::from_millis(2500);
 const GAME_RECORD: Duration = Duration::from_secs(4);
 const RESULTS_SHOWN: Duration = Duration::from_secs(10);
 const RETRY_CALIBRATION: Duration = Duration::from_secs(5);
+/// Laptop lids tilt rarely, so the background needn't be checked every frame.
+const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
 
 pub enum Command {
     Recalibrate,
@@ -152,6 +154,7 @@ pub struct Engine {
     settings: Settings,
     tracker: Option<Tracker>,
     drift: Option<CameraDrift>,
+    drift_checked: Option<Instant>,
     view: View,
     started: Instant,
     results_until: Option<Instant>,
@@ -211,6 +214,7 @@ impl Engine {
             },
             tracker: None,
             drift: None,
+            drift_checked: None,
             view: View::default(),
             started: Instant::now(),
             results_until: None,
@@ -331,10 +335,17 @@ impl Engine {
 
     fn watch(&mut self) {
         let Some(seen) = self.observe() else { return };
-        let drift = self
-            .drift
-            .as_mut()
-            .map_or(0.0, |d| d.update(seen.grey(), seen.person()));
+        let due = self
+            .drift_checked
+            .is_none_or(|at| at.elapsed() >= DRIFT_INTERVAL);
+        let drift = match self.drift.as_mut() {
+            Some(drift) if due => {
+                self.drift_checked = Some(Instant::now());
+                drift.update(seen.grey(), seen.person())
+            }
+            Some(drift) => drift.last(),
+            None => 0.0,
+        };
         let now = self.now();
         let tracker = self.tracker.as_mut().expect("calibrated");
         let update = tracker.update(now, seen.posture(drift));

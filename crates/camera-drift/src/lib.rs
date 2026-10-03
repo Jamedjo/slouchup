@@ -232,7 +232,7 @@ fn best_match(
         let (cx, cy) = (x + dx, y + dy);
         current
             .contains(cx, cy, half)
-            .then(|| template.correlate(&Window::new(current, cx, cy, half)))
+            .then(|| template.correlate_at(current, cx, cy, half))
     };
     let mut best: Option<(isize, isize, f32)> = None;
     for dy in oy - reach_y..=oy + reach_y {
@@ -266,36 +266,56 @@ fn parabola_peak([above, peak, below]: [f32; 3]) -> f32 {
     }
 }
 
+/// The widest patch side, at the fine level.
+const MAX_SIDE: usize = 2 * PATCH_HALF as usize + 1;
+
 /// A patch with its mean removed, ready for normalised cross-correlation.
 struct Window {
-    values: Vec<f32>,
+    values: [f32; MAX_SIDE * MAX_SIDE],
     norm: f32,
 }
 
 impl Window {
     fn new(image: &Image, x: isize, y: isize, half: isize) -> Self {
-        let mut values = Vec::with_capacity(((2 * half + 1) * (2 * half + 1)) as usize);
-        for py in y - half..=y + half {
-            for px in x - half..=x + half {
-                values.push(image.at(px, py));
-            }
+        let side = (2 * half + 1) as usize;
+        let len = side * side;
+        let mut values = [0f32; MAX_SIDE * MAX_SIDE];
+        for (row, py) in (y - half..=y + half).enumerate() {
+            let start = py as usize * image.width + (x - half) as usize;
+            values[row * side..(row + 1) * side]
+                .copy_from_slice(&image.pixels[start..start + side]);
         }
-        let mean = values.iter().sum::<f32>() / values.len() as f32;
-        values.iter_mut().for_each(|v| *v -= mean);
-        let norm = values.iter().map(|v| v * v).sum::<f32>().sqrt();
+        let mean = values[..len].iter().sum::<f32>() / len as f32;
+        values[..len].iter_mut().for_each(|v| *v -= mean);
+        let norm = values[..len].iter().map(|v| v * v).sum::<f32>().sqrt();
         Self { values, norm }
     }
 
-    fn correlate(&self, other: &Window) -> f32 {
-        if self.norm == 0.0 || other.norm == 0.0 {
+    /// Correlate with the window of `image` at `(x, y)` without copying it. The template is
+    /// zero-mean, so the other window's mean drops out of the dot product and only its own
+    /// sums are needed for its norm.
+    fn correlate_at(&self, image: &Image, x: isize, y: isize, half: isize) -> f32 {
+        let side = (2 * half + 1) as usize;
+        // Per-column accumulators keep the inner loop free of dependencies so it vectorises.
+        let (mut dot, mut sum, mut squares) =
+            ([0f32; MAX_SIDE], [0f32; MAX_SIDE], [0f32; MAX_SIDE]);
+        for row in 0..side {
+            let start = (y - half) as usize * image.width + row * image.width + (x - half) as usize;
+            let pixels = &image.pixels[start..start + side];
+            let template = &self.values[row * side..(row + 1) * side];
+            for i in 0..side {
+                dot[i] += template[i] * pixels[i];
+                sum[i] += pixels[i];
+                squares[i] += pixels[i] * pixels[i];
+            }
+        }
+        let (dot, sum, squares): (f32, f32, f32) =
+            (dot.iter().sum(), sum.iter().sum(), squares.iter().sum());
+        let variance = squares - sum * sum / (side * side) as f32;
+        if self.norm == 0.0 || variance <= 0.0 {
             return 0.0;
         }
-        self.values
-            .iter()
-            .zip(&other.values)
-            .map(|(a, b)| a * b)
-            .sum::<f32>()
-            / (self.norm * other.norm)
+        dot / (self.norm * variance.sqrt())
     }
 }
 

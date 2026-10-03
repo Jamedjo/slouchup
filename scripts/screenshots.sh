@@ -30,6 +30,10 @@ sleep 4.5 && shot slouching
 sleep 11.5 && shot leaning
 kill $!
 
+"$app" --demo --settings > "$work/settings.log" 2>&1 &
+sleep 3 && swaync-client -C > /dev/null && swaymsg -q '[title="Slouch settings"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "Slouch settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
+kill $!
+
 # The game with one screen: sit up, slump, sit up again, lean.
 "$app" --demo --game > "$work/game.log" 2>&1 &
 sleep 9.5 && shot calibration-game

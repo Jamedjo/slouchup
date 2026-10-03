@@ -29,7 +29,10 @@ grey when it can't see you or is paused. Its menu shows the current status and h
   your screens, slouching, and leaning in, then set the limits halfway between. It runs by itself
   the first time Slouch starts.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
+- **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
 - **Pause** and **Quit**.
+
+<img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 
 The baseline also follows you slowly: it catches up within minutes when you sit better than it,
 but only over half an hour when you sit worse, so gradual slouching isn't quietly accepted.
@@ -40,16 +43,17 @@ cargo build --release
 target/release/slouch            # tray only
 target/release/slouch --show     # with the camera window open
 target/release/slouch --demo     # with the drawn stand-in instead of a webcam
+target/release/slouch --settings # with the settings window open
 ```
 
-Calibration is saved in `~/.config/slouch/thresholds.json`, and each game's recording in
-`~/.cache/slouch/games/`.
+The limits are saved in `~/.config/slouch/thresholds.json`, other settings in
+`~/.config/slouch/settings.json`, and each calibration game's recording in `~/.cache/slouch/games/`.
 
 ## Platforms
 
-Linux is where Slouch is developed and used. macOS and Windows builds type-check but haven't been
-run yet; `packaging/macos/bundle.sh` makes an app bundle, which macOS needs before it allows camera
-access.
+Linux is where Slouch is developed and used. CI builds and tests it on macOS and Windows too, but
+it hasn't been run as an app there yet. `packaging/macos/bundle.sh` makes an app bundle, which macOS
+needs before it allows camera access.
 
 ## How it's built
 

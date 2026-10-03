@@ -24,6 +24,11 @@ fn thresholds_file() -> PathBuf {
         .join("thresholds.json")
 }
 
+/// Whether a calibration has ever been saved; the first run starts with the game instead.
+pub fn has_thresholds() -> bool {
+    thresholds_file().exists()
+}
+
 pub fn load_thresholds() -> Thresholds {
     std::fs::read_to_string(thresholds_file())
         .ok()

@@ -18,7 +18,8 @@ use futures_util::StreamExt;
 
 use crate::art::{self, Mood};
 use crate::camera_view::{CameraView, FrameSlot};
-use crate::engine::{Banner, Command, FaceView, View};
+use crate::engine::{Banner, Command, FaceView, LookAt, View};
+use crate::screens;
 
 const STYLE: &str = include_str!("style.css");
 
@@ -86,45 +87,6 @@ impl Tray {
     }
 }
 
-/// Name each screen by where it sits, like "top-left screen", so the game can say where to look.
-fn describe_screens(monitors: &[MonitorHandle]) -> Vec<String> {
-    let rects: Vec<(f64, f64, f64, f64)> = monitors
-        .iter()
-        .map(|m| {
-            let (p, s) = (m.position(), m.size());
-            (p.x as f64, p.y as f64, s.width as f64, s.height as f64)
-        })
-        .collect();
-    let left = rects.iter().map(|r| r.0).fold(f64::MAX, f64::min);
-    let right = rects.iter().map(|r| r.0 + r.2).fold(f64::MIN, f64::max);
-    let top = rects.iter().map(|r| r.1).fold(f64::MAX, f64::min);
-    let bottom = rects.iter().map(|r| r.1 + r.3).fold(f64::MIN, f64::max);
-    let distinct = |values: Vec<f64>| values.iter().any(|v| *v != values[0]);
-    let stacked = distinct(rects.iter().map(|r| r.1).collect());
-    let side_by_side = distinct(rects.iter().map(|r| r.0).collect());
-    rects
-        .iter()
-        .map(|&(x, y, w, h)| {
-            let across = (x + w / 2.0 - left) / (right - left);
-            let down = (y + h / 2.0 - top) / (bottom - top);
-            let mut parts = Vec::new();
-            if stacked {
-                parts.push(if down < 0.5 { "top" } else { "bottom" });
-            }
-            if side_by_side {
-                parts.push(if across < 1.0 / 3.0 {
-                    "left"
-                } else if across > 2.0 / 3.0 {
-                    "right"
-                } else {
-                    "middle"
-                });
-            }
-            format!("{} screen", parts.join("-"))
-        })
-        .collect()
-}
-
 fn show_main_window() {
     let main = window();
     main.set_visible(true);
@@ -138,8 +100,8 @@ pub fn App() -> Element {
     let tray = use_hook(|| std::rc::Rc::new(Tray::new()));
     let mut paused = use_signal(|| false);
     let monitors = use_signal(Vec::<MonitorHandle>::new);
-    let look_here = use_hook(|| LookHereText(Arc::new(Mutex::new(String::new()))));
-    let mut look_here_window = use_signal(|| None::<(usize, DesktopContext)>);
+    let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));
+    let mut look_here_window = use_signal(|| None::<(Option<usize>, DesktopContext)>);
 
     let receiver = use_hook({
         let bridge = bridge.clone();
@@ -162,9 +124,8 @@ pub fn App() -> Element {
         let mut monitors = monitors;
         move || {
             let found: Vec<MonitorHandle> = window().available_monitors().collect();
-            let screens = describe_screens(&found);
+            let screens = screens::describe(&found);
             monitors.set(found);
-            show_main_window();
             bridge.send(Command::Game { screens });
         }
     };
@@ -215,48 +176,55 @@ pub fn App() -> Element {
         }
     });
 
-    // Put the game's "look here" prompt on the screen it wants you to look at.
+    // Put each game step full screen, on the screen it wants you to look at.
     use_effect({
         let look_here = look_here.clone();
+        let preview = bridge.preview.clone();
         move || {
             let target = view.read().look_at.clone();
-            let open = look_here_window.peek().as_ref().map(|(screen, _)| *screen);
-            match target {
-                Some((screen, text)) => {
-                    *look_here.0.lock().unwrap() = text;
-                    if open == Some(screen) {
-                        return;
-                    }
-                    if let Some((_, old)) = look_here_window.take() {
-                        old.close();
-                    }
-                    let Some(monitor) = monitors.peek().get(screen).cloned() else {
-                        return;
-                    };
-                    let dom = VirtualDom::new_with_props(
-                        LookHere,
-                        LookHereProps {
-                            text: look_here.clone(),
-                        },
-                    );
-                    let config = Config::new().with_menu(None).with_window(
-                        WindowBuilder::new()
-                            .with_title("Slouch: look here")
-                            .with_decorations(false)
-                            .with_always_on_top(true)
-                            .with_fullscreen(Some(Fullscreen::Borderless(Some(monitor)))),
-                    );
-                    let pending = window().new_window(dom, config);
-                    spawn(async move {
-                        look_here_window.set(Some((screen, pending.await)));
-                    });
+            let Some(target) = target else {
+                if let Some((_, old)) = look_here_window.take() {
+                    old.close();
                 }
-                None => {
-                    if let Some((_, old)) = look_here_window.take() {
-                        old.close();
-                    }
-                }
+                return;
+            };
+            let screen = target.screen;
+            *look_here.0.lock().unwrap() = target;
+            if look_here_window
+                .peek()
+                .as_ref()
+                .is_some_and(|(open, _)| *open == screen)
+            {
+                return;
             }
+            if let Some((_, old)) = look_here_window.take() {
+                old.close();
+            }
+            let main = window();
+            let monitor = match screen {
+                Some(index) => monitors.peek().get(index).cloned(),
+                None => screens::built_in(&monitors.peek())
+                    .or_else(|| main.current_monitor())
+                    .or_else(|| main.primary_monitor()),
+            };
+            let dom = VirtualDom::new_with_props(
+                LookHere,
+                LookHereProps {
+                    step: look_here.clone(),
+                    slot: preview.clone(),
+                },
+            );
+            let config = Config::new().with_menu(None).with_window(
+                WindowBuilder::new()
+                    .with_title("Slouch: calibration game")
+                    .with_decorations(false)
+                    .with_always_on_top(true)
+                    .with_fullscreen(Some(Fullscreen::Borderless(monitor))),
+            );
+            let pending = main.new_window(dom, config);
+            spawn(async move {
+                look_here_window.set(Some((screen, pending.await)));
+            });
         }
     });
 
@@ -347,24 +315,24 @@ fn BannerView(banner: Banner) -> Element {
     }
 }
 
-/// Text shared with the separate "look here" window, which has its own virtual DOM.
+/// The current game step, shared with the full-screen window, which has its own virtual DOM.
 #[derive(Clone)]
-pub struct LookHereText(Arc<Mutex<String>>);
+pub struct SharedLookAt(Arc<Mutex<LookAt>>);
 
-impl PartialEq for LookHereText {
+impl PartialEq for SharedLookAt {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 }
 
 #[component]
-fn LookHere(text: LookHereText) -> Element {
-    let mut shown = use_signal(String::new);
+fn LookHere(step: SharedLookAt, slot: FrameSlot) -> Element {
+    let mut shown = use_signal(LookAt::default);
     use_future(move || {
-        let text = text.clone();
+        let step = step.clone();
         async move {
             loop {
-                let latest = text.0.lock().unwrap().clone();
+                let latest = step.0.lock().unwrap().clone();
                 if *shown.peek() != latest {
                     shown.set(latest);
                 }
@@ -372,17 +340,20 @@ fn LookHere(text: LookHereText) -> Element {
             }
         }
     });
-    let shown = shown.read();
-    let mut lines = shown.lines();
-    let prompt = lines.next().unwrap_or_default().to_string();
-    let detail = lines.next().unwrap_or_default().to_string();
+    let step = shown.read().clone();
     rsx! {
         style { {STYLE} }
         div { class: "look-here",
-            div { class: "look-eyes", "👀" }
-            div { class: "look-title", "Look here" }
-            div { class: "look-prompt", "{prompt}" }
-            div { class: "look-detail", "{detail}" }
+            if step.screen.is_some() {
+                div { class: "look-eyes", "👀" }
+                div { class: "look-title", "Look here" }
+            }
+            div { class: "look-prompt", "{step.prompt}" }
+            div { class: "look-detail", "{step.detail}" }
+            div { class: "look-progress",
+                div { class: "progress-fill", style: "width: {step.progress * 100.0}%" }
+            }
+            div { class: "look-camera", CameraView { slot } }
         }
     }
 }

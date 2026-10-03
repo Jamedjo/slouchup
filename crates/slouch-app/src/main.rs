@@ -4,6 +4,7 @@ mod config;
 mod engine;
 mod frames;
 mod notifier;
+mod screens;
 mod ui;
 
 use std::sync::{Arc, Mutex};
@@ -47,7 +48,7 @@ fn main() {
     let bridge = ui::Bridge {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),
-        start_with_game: args.game,
+        start_with_game: args.game || !config::has_thresholds(),
         preview,
     };
 

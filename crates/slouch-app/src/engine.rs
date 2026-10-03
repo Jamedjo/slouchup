@@ -23,6 +23,7 @@ const CALIBRATION: Duration = Duration::from_secs(3);
 const GAME_SETTLE: Duration = Duration::from_millis(2500);
 const GAME_RECORD: Duration = Duration::from_secs(4);
 const RESULTS_SHOWN: Duration = Duration::from_secs(10);
+const RESULTS_CARD: Duration = Duration::from_secs(4);
 const RETRY_CALIBRATION: Duration = Duration::from_secs(5);
 /// Laptop lids tilt rarely, so the background needn't be checked every frame.
 const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
@@ -45,8 +46,8 @@ pub struct View {
     /// Where the baseline eye line and the slouch line currently fall.
     pub lines: Option<(f32, f32)>,
     pub banner: Option<Banner>,
-    /// The game wants you looking at this screen, with this prompt.
-    pub look_at: Option<(usize, String)>,
+    /// What the calibration game is asking for right now.
+    pub look_at: Option<LookAt>,
 }
 
 impl Default for View {
@@ -63,6 +64,16 @@ impl Default for View {
             look_at: None,
         }
     }
+}
+
+/// A calibration game step, for the full-screen prompt.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LookAt {
+    /// The screen to look at, or `None` for the screen the camera window is on.
+    pub screen: Option<usize>,
+    pub prompt: String,
+    pub detail: String,
+    pub progress: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -476,9 +487,12 @@ impl Engine {
                     lines: vec![subtitle.clone()],
                     progress: Some(progress),
                 });
-                self.view.look_at = step
-                    .screen
-                    .map(|screen| (screen, format!("{}\n{subtitle}", step.prompt)));
+                self.view.look_at = Some(LookAt {
+                    screen: step.screen,
+                    prompt: step.prompt.clone(),
+                    detail: subtitle.clone(),
+                    progress,
+                });
                 self.view.face = seen.face_view();
                 self.view.status = if seen.face.is_some() {
                     "Calibration game"
@@ -489,7 +503,6 @@ impl Engine {
                 self.publish();
             }
         }
-        self.view.look_at = None;
         self.finish_game(&steps, records, drift)
     }
 
@@ -517,6 +530,7 @@ impl Engine {
         tracing::info!("game saved to {}: {result:?}", path.display());
 
         let (Some(result), Some(drift)) = (result, drift) else {
+            self.view.look_at = None;
             self.set_status(Mood::Idle, "The game didn't see your face enough");
             self.view.banner = Some(Banner {
                 title: "Try again".into(),
@@ -541,6 +555,20 @@ impl Engine {
                 m.upright_max, m.slump, m.lean
             )
         };
+        let limits = self.settings.thresholds;
+        self.view.look_at = Some(LookAt {
+            screen: None,
+            prompt: "Calibrated ✨".into(),
+            detail: format!(
+                "Nagging when your eyes drop {:.2} face heights or your face grows {:.0}%",
+                limits.drop,
+                limits.lean * 100.0
+            ),
+            progress: 1.0,
+        });
+        self.publish();
+        std::thread::sleep(RESULTS_CARD);
+        self.view.look_at = None;
         self.view.banner = Some(Banner {
             title: "Results".into(),
             lines: vec![line("drop", &result.drop), line("lean", &result.lean)],

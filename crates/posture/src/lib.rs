@@ -39,6 +39,11 @@ impl Posture {
         }
     }
 
+    /// Finite, with a face of some size.
+    pub fn is_valid(&self) -> bool {
+        self.eye_y.is_finite() && self.size.is_finite() && self.size > 0.0
+    }
+
     fn lerp(self, towards: Posture, amount: f32) -> Posture {
         Posture {
             eye_y: self.eye_y + amount * (towards.eye_y - self.eye_y),
@@ -67,6 +72,25 @@ pub struct Thresholds {
     pub lean: f32,
 }
 
+impl Thresholds {
+    /// These limits with any that can't work (not a number, or not positive) replaced by
+    /// the default; the thresholds file can be edited by hand.
+    pub fn checked(self) -> Self {
+        let defaults = Thresholds::default();
+        let pick = |value: f32, default: f32| {
+            if value.is_finite() && value > 0.0 {
+                value
+            } else {
+                default
+            }
+        };
+        Thresholds {
+            drop: pick(self.drop, defaults.drop),
+            lean: pick(self.lean, defaults.lean),
+        }
+    }
+}
+
 impl Default for Thresholds {
     fn default() -> Self {
         Self {
@@ -86,6 +110,7 @@ pub struct Reading {
 }
 
 impl Reading {
+    /// Compare `posture` with `baseline`, whose size must be positive.
     pub fn new(posture: Posture, baseline: Posture) -> Self {
         Self {
             drop: (posture.eye_y - baseline.eye_y) / baseline.size,
@@ -109,6 +134,7 @@ impl Reading {
 pub enum Problem {
     /// Face is this fraction bigger than usual.
     Leaning(f32),
+    /// Eyes have dropped below the baseline.
     Sinking,
     /// The face vanished while posture was already heading somewhere bad.
     DroppedOutOfView,

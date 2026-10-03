@@ -21,6 +21,26 @@ pub struct Settings {
     pub cooldown: f64,
 }
 
+impl Settings {
+    /// These settings with anything unusable (not a number, or not positive) replaced by its default.
+    pub fn checked(self) -> Self {
+        let defaults = Settings::default();
+        let pick = |value: f64, default: f64| {
+            if value.is_finite() && value > 0.0 {
+                value
+            } else {
+                default
+            }
+        };
+        Settings {
+            thresholds: self.thresholds.checked(),
+            grace: pick(self.grace, defaults.grace),
+            min_gap: pick(self.min_gap, defaults.min_gap),
+            cooldown: pick(self.cooldown, defaults.cooldown),
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -32,6 +52,7 @@ impl Default for Settings {
     }
 }
 
+/// How you are sitting, as of the latest frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum State {
     Good,
@@ -40,22 +61,29 @@ pub enum State {
     Away,
 }
 
+/// Something the caller should do about it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Action {
+    /// Tell the user to sit up.
     Nag(Problem),
-    /// Posture recovered after a nag.
+    /// The slouch that was nagged about is over, whether by sitting up or by leaving.
     Dismiss,
 }
 
+/// The result of one [`Tracker::update`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Update {
     pub state: State,
+    /// How the smoothed posture compares with the baseline, when a face was seen.
     pub reading: Option<Reading>,
     pub action: Option<Action>,
 }
 
+/// Decides, frame by frame, whether you're slouching and when to say so. It smooths readings,
+/// lets the baseline follow you slowly, and spaces nags out according to [`Settings`].
+#[derive(Debug)]
 pub struct Tracker {
-    pub settings: Settings,
+    settings: Settings,
     baseline: Posture,
     smoothed: Option<Posture>,
     last_tick: Option<f64>,
@@ -69,7 +97,7 @@ pub struct Tracker {
 impl Tracker {
     pub fn new(baseline: Posture, settings: Settings) -> Self {
         Self {
-            settings,
+            settings: settings.checked(),
             baseline,
             smoothed: None,
             last_tick: None,
@@ -85,10 +113,20 @@ impl Tracker {
         self.baseline
     }
 
+    pub fn settings(&self) -> Settings {
+        self.settings
+    }
+
+    pub fn set_settings(&mut self, settings: Settings) {
+        self.settings = settings.checked();
+    }
+
     /// Feed one frame. `now` is in seconds from any fixed origin. Returns `None` while a face is
     /// only briefly missing, when nothing should change.
     pub fn update(&mut self, now: f64, posture: Option<Posture>) -> Option<Update> {
-        let dt = self.last_tick.map_or(0.0, |t| (now - t) as f32);
+        // A reading that isn't a number would poison the smoothing and the baseline for good.
+        let posture = posture.filter(|p| p.is_valid());
+        let dt = self.last_tick.map_or(0.0, |t| (now - t).max(0.0) as f32);
         self.last_tick = Some(now);
         let since_seen = self.last_seen.map_or(f64::INFINITY, |t| now - t);
         if posture.is_none() && since_seen < FACE_BLINK {
@@ -262,6 +300,52 @@ mod tests {
         assert_eq!(
             gone.last().unwrap().1.state,
             State::Bad(Problem::DroppedOutOfView)
+        );
+    }
+
+    #[test]
+    fn readings_that_are_not_numbers_leave_the_baseline_alone() {
+        let mut tracker = Tracker::new(UPRIGHT, Settings::default());
+        run(&mut tracker, 0.0, 2.0, Some(UPRIGHT));
+        run(
+            &mut tracker,
+            2.0,
+            4.0,
+            Some(Posture {
+                eye_y: f32::NAN,
+                size: 74.0,
+            }),
+        );
+        run(
+            &mut tracker,
+            4.0,
+            6.0,
+            Some(Posture {
+                eye_y: 220.0,
+                size: 0.0,
+            }),
+        );
+        assert!(tracker.baseline().is_valid());
+        let update = tracker.update(6.2, Some(SLUMPED)).unwrap();
+        assert!(
+            matches!(update.state, State::Bad(_)),
+            "still judges posture: {update:?}"
+        );
+    }
+
+    #[test]
+    fn unusable_settings_fall_back_to_defaults() {
+        let broken = Settings {
+            thresholds: Thresholds {
+                drop: 0.0,
+                lean: f32::NAN,
+            },
+            grace: -1.0,
+            ..Settings::default()
+        };
+        assert_eq!(
+            Tracker::new(UPRIGHT, broken).settings(),
+            Settings::default()
         );
     }
 

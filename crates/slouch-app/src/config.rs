@@ -96,6 +96,7 @@ impl Preferences {
             min_gap: self.min_gap,
             cooldown: self.cooldown,
         }
+        .checked()
     }
 }
 
@@ -118,8 +119,9 @@ pub fn has_thresholds() -> bool {
 pub fn load_thresholds() -> Thresholds {
     std::fs::read_to_string(thresholds_file())
         .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .and_then(|text| serde_json::from_str::<Thresholds>(&text).ok())
         .unwrap_or_default()
+        .checked()
 }
 
 pub fn save_thresholds(thresholds: Thresholds) -> std::io::Result<()> {

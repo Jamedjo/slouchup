@@ -368,7 +368,7 @@ impl Engine {
             Change::Defaults => *settings = Settings::default(),
         }
         if let Some(tracker) = &mut self.tracker {
-            tracker.settings = self.settings;
+            tracker.set_settings(self.settings);
         }
         self.save_thresholds(self.settings.thresholds);
         self.save_preferences();

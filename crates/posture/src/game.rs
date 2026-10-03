@@ -23,10 +23,12 @@ pub struct Step {
     pub screen: Option<usize>,
 }
 
-/// One recorded frame: which step it belongs to (counting from 1) and the posture seen.
+/// One recorded frame: which step it belongs to and the posture seen.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Sample {
+    /// Counting from 1, as shown to the player. Scoring takes the pose from the step itself.
     pub step: usize,
+    /// The step's pose, kept so recordings can be read on their own.
     pub pose: Pose,
     pub posture: Posture,
 }
@@ -102,6 +104,13 @@ pub fn score_game(steps: &[Step], samples: &[Sample]) -> Option<GameResult> {
         })
         .collect();
     if by_step.iter().any(|postures| postures.len() < MIN_SAMPLES) {
+        return None;
+    }
+    // Every kind of pose is needed: upright for the baseline, the others to measure slouching.
+    if [Pose::Upright, Pose::Slump, Pose::Lean]
+        .iter()
+        .any(|pose| steps.iter().all(|s| s.pose != *pose))
+    {
         return None;
     }
     let pose_steps = |pose: Pose| {
@@ -222,6 +231,16 @@ mod tests {
         let lean = result.lean.threshold.expect("lean separates");
         assert!(result.drop.upright_max < drop && drop < result.drop.slump);
         assert!(result.lean.upright_max < lean && lean < result.lean.lean);
+    }
+
+    #[test]
+    fn games_missing_a_kind_of_pose_score_nothing() {
+        assert!(score_game(&[], &[]).is_none());
+        let upright_only: Vec<Step> = game_steps(&[])
+            .into_iter()
+            .filter(|s| s.pose == Pose::Upright)
+            .collect();
+        assert!(score_game(&upright_only, &play(&upright_only)).is_none());
     }
 
     #[test]

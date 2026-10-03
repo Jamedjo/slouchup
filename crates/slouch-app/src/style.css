@@ -31,13 +31,11 @@ html, body {
 
 .stage {
   position: relative;
-  max-width: 100%;
-  max-height: calc(100vh - 64px);
   margin: 0 auto;
   border-radius: 8px;
   overflow: hidden;
   background: #000;
-  flex: 1 1 auto;
+  flex: none;
 }
 
 .stage canvas, .stage .overlay {

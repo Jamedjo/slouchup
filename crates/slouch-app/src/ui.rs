@@ -234,7 +234,10 @@ pub fn App() -> Element {
     rsx! {
         style { {STYLE} }
         div { class: "app",
-            div { class: "stage", style: "aspect-ratio: {frame_width} / {frame_height}",
+            div {
+                class: "stage",
+                // As wide as fits both the window's width and its height, so the picture keeps its shape.
+                style: "aspect-ratio: {frame_width} / {frame_height}; width: min(100%, calc((100vh - 72px) * {frame_width} / {frame_height}))",
                 CameraView { slot: preview }
                 svg {
                     class: "overlay",

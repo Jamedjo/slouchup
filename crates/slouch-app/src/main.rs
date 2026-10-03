@@ -1,3 +1,6 @@
+// Without this, Windows opens a console window alongside the tray app.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod art;
 mod camera_view;
 mod config;

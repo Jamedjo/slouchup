@@ -141,3 +141,14 @@ html, body {
 /* Small enough to check you're in frame without becoming the thing you look at. */
 .look-camera { position: relative; width: 240px; aspect-ratio: 4 / 3; margin-top: 24px; border-radius: 10px; overflow: hidden; opacity: 0.85; }
 .look-camera canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.settings { padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; height: 100vh; box-sizing: border-box; }
+.settings h1 { margin: 0; width: fit-content; font-size: 24px; background: var(--rainbow); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.settings h2 { margin: 0 0 10px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.settings section { background: var(--panel); border-radius: 10px; padding: 14px 16px; }
+/* Without appearance: none, GTK draws its own light control under our light text. */
+.settings select { appearance: none; width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3d4a; background-color: var(--bg); color: var(--text); font-size: 14px; }
+.settings .hint { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-bottom: 12px; font-size: 14px; }
+.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--good); }
+.slider-value { color: var(--good); font-variant-numeric: tabular-nums; }

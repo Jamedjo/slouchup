@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use camera_drift::{CameraDrift, Grey, Rect};
 use crossbeam_channel::Receiver;
 use futures_channel::mpsc::UnboundedSender;
-use posture::{Action, Posture, Reading, Sample, Settings, State, Step, Thresholds, Tracker};
+use posture::{Action, Posture, Reading, Sample, Settings, State, Step, Tracker};
 use serde::Serialize;
 
 use crate::art::Mood;
@@ -29,8 +29,13 @@ const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
 
 pub enum Command {
     Recalibrate,
-    Game { screens: Vec<String> },
+    Game {
+        screens: Vec<String>,
+    },
     Pause(bool),
+    Configure(Settings),
+    /// Switch camera, by device id or `None` for the first that works.
+    UseCamera(Option<String>),
 }
 
 /// What the UI draws. Positions are in camera-frame pixels.
@@ -41,7 +46,7 @@ pub struct View {
     pub frame_size: (f32, f32),
     pub face: Option<FaceView>,
     pub reading: Option<Reading>,
-    pub thresholds: Thresholds,
+    pub settings: Settings,
     /// Where the baseline eye line and the slouch line currently fall.
     pub lines: Option<(f32, f32)>,
     pub banner: Option<Banner>,
@@ -57,7 +62,7 @@ impl Default for View {
             frame_size: (640.0, 480.0),
             face: None,
             reading: None,
-            thresholds: Thresholds::default(),
+            settings: Settings::default(),
             lines: None,
             banner: None,
             look_at: None,
@@ -157,6 +162,7 @@ struct GameRecord {
 
 pub struct Engine {
     capture: Capture,
+    preview: FrameSlot,
     persist: bool,
     finder: FaceFinder,
     notifier: Notifier,
@@ -175,6 +181,7 @@ pub struct Engine {
 impl Engine {
     pub fn start(
         source: Source,
+        settings: Settings,
         preview: FrameSlot,
         notifier: Notifier,
         events: UnboundedSender<View>,
@@ -182,7 +189,7 @@ impl Engine {
     ) -> Result<(), String> {
         // A demo is for looking at, so it mustn't overwrite the real calibration.
         let persist = !matches!(source, Source::Demo);
-        let capture = Capture::start(source, preview)?;
+        let capture = Capture::start(source, preview.clone())?;
         let engine = Engine {
             capture,
             persist,
@@ -190,14 +197,8 @@ impl Engine {
             notifier,
             events,
             commands,
-            settings: Settings {
-                thresholds: if persist {
-                    config::load_thresholds()
-                } else {
-                    Default::default()
-                },
-                ..Settings::default()
-            },
+            settings,
+            preview,
             tracker: None,
             drift: None,
             drift_checked: None,
@@ -218,7 +219,7 @@ impl Engine {
     }
 
     fn publish(&mut self) {
-        self.view.thresholds = self.settings.thresholds;
+        self.view.settings = self.settings;
         if self
             .results_until
             .is_some_and(|until| Instant::now() > until)
@@ -255,6 +256,24 @@ impl Engine {
                     Command::Pause(paused) => {
                         self.paused = paused;
                         self.capture.set_active(!paused);
+                    }
+                    Command::Configure(settings) => {
+                        self.settings = settings;
+                        if let Some(tracker) = &mut self.tracker {
+                            tracker.settings = settings;
+                        }
+                    }
+                    Command::UseCamera(id) => {
+                        match Capture::start(Source::Camera(id), self.preview.clone()) {
+                            Ok(capture) => {
+                                // A different camera sees you from somewhere else, so start afresh.
+                                self.capture = capture;
+                                self.tracker = None;
+                                self.finder = FaceFinder::new();
+                                announce = true;
+                            }
+                            Err(error) => self.notifier.info("Couldn't switch camera 😿", &error),
+                        }
                     }
                 }
             }

@@ -10,6 +10,7 @@ mod finder;
 mod frames;
 mod notifier;
 mod screens;
+mod settings;
 mod source;
 mod ui;
 
@@ -47,13 +48,23 @@ fn main() {
     let (command_tx, command_rx) = crossbeam_channel::unbounded();
     let (view_tx, view_rx) = futures_channel::mpsc::unbounded();
     let preview = FrameSlot::default();
-    let source = if args.demo {
-        Source::Demo
+    let preferences = config::load_preferences();
+    let (source, settings) = if args.demo {
+        (Source::Demo, posture::Settings::default())
     } else {
-        Source::Camera(args.camera)
+        // `--camera N` picks by position, as OpenCV numbers cameras; otherwise the saved choice.
+        let camera = match args.camera {
+            Some(index) => source::list_cameras().get(index).map(|c| c.id.clone()),
+            None => preferences.camera.clone(),
+        };
+        (
+            Source::Camera(camera),
+            preferences.settings(config::load_thresholds()),
+        )
     };
     if let Err(error) = Engine::start(
         source,
+        settings,
         preview.clone(),
         Notifier::new(files.clone()),
         view_tx,
@@ -66,6 +77,8 @@ fn main() {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),
         start_with_game: args.game || (!args.demo && !config::has_thresholds()),
+        persist: !args.demo,
+        start_with_settings: args.settings,
         preview,
     };
 

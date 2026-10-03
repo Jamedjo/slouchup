@@ -20,6 +20,7 @@ use crate::art::{self, Mood};
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::engine::{Banner, Command, FaceView, LookAt, View};
 use crate::screens;
+use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
 
 const STYLE: &str = include_str!("style.css");
 
@@ -30,10 +31,13 @@ pub struct Bridge {
     pub views: Arc<Mutex<Option<UnboundedReceiver<View>>>>,
     pub start_with_game: bool,
     pub preview: FrameSlot,
+    /// Whether settings and calibration are saved; demos leave them alone.
+    pub persist: bool,
+    pub start_with_settings: bool,
 }
 
 impl Bridge {
-    fn send(&self, command: Command) {
+    pub fn send(&self, command: Command) {
         let _ = self.commands.send(command);
     }
 }
@@ -62,6 +66,7 @@ impl Tray {
             &MenuItem::with_id("show", "Show camera", true, None),
             &MenuItem::with_id("game", "Calibration game", true, None),
             &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
+            &MenuItem::with_id("settings", "Settings…", true, None),
             &pause,
             &MenuItem::with_id("quit", "Quit", true, None),
         ])
@@ -139,6 +144,41 @@ pub fn App() -> Element {
             bridge.send(Command::Game { screens });
         }
     };
+    let settings_open = use_hook(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let open_settings = {
+        let bridge = bridge.clone();
+        move || {
+            if settings_open.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            let handle = SettingsHandle {
+                bridge: bridge.clone(),
+                open: settings_open.clone(),
+            };
+            let dom = VirtualDom::new_with_props(
+                SettingsPage,
+                SettingsPageProps {
+                    handle,
+                    initial: view.peek().settings,
+                },
+            );
+            let config = Config::new().with_menu(None).with_window(
+                WindowBuilder::new()
+                    .with_title("Slouch settings")
+                    .with_inner_size(dioxus::desktop::LogicalSize::new(480.0, 640.0)),
+            );
+            let _ = window().new_window(dom, config);
+        }
+    };
+    use_hook({
+        let open_settings = open_settings.clone();
+        let wanted = bridge.start_with_settings;
+        move || {
+            if wanted {
+                open_settings();
+            }
+        }
+    });
     use_hook({
         let mut start_game = start_game.clone();
         let wanted = bridge.start_with_game;
@@ -153,9 +193,11 @@ pub fn App() -> Element {
         let bridge = bridge.clone();
         let tray = tray.clone();
         let mut start_game = start_game.clone();
+        let open_settings = open_settings.clone();
         move || {
             std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
                 "show" => show_main_window(),
+                "settings" => open_settings(),
                 "game" => start_game(),
                 "recalibrate" => bridge.send(Command::Recalibrate),
                 "pause" => {
@@ -265,8 +307,8 @@ pub fn App() -> Element {
                 }
                 if let Some(reading) = current.reading {
                     div { class: "bars",
-                        Bar { name: "drop", ratio: reading.drop / current.thresholds.drop }
-                        Bar { name: "lean", ratio: reading.lean / current.thresholds.lean }
+                        Bar { name: "drop", ratio: reading.drop / current.settings.thresholds.drop }
+                        Bar { name: "lean", ratio: reading.lean / current.settings.thresholds.lean }
                     }
                 }
                 if let Some(banner) = &current.banner {
@@ -277,6 +319,7 @@ pub fn App() -> Element {
             div { class: "buttons",
                 button { onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
                 button { onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
+                button { onclick: move |_| { let open = open_settings.clone(); open() }, "Settings" }
             }
         }
     }

@@ -10,9 +10,31 @@ use crate::demo::Demo;
 use crate::frames::Picture;
 
 pub enum Source {
-    /// The nth camera that can capture, numbered as OpenCV numbers them.
-    Camera(usize),
+    /// A camera by device id, or the first that can capture.
+    Camera(Option<String>),
     Demo,
+}
+
+/// A camera that can capture, for choosing between them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraInfo {
+    pub id: String,
+    pub name: String,
+}
+
+/// Cameras that can capture, numbered as OpenCV numbers them: by device path, without the
+/// metadata nodes that some webcams also expose.
+pub fn list_cameras() -> Vec<CameraInfo> {
+    let mut devices = cameras::devices().unwrap_or_default();
+    devices.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+    devices
+        .into_iter()
+        .filter(|d| cameras::probe(d).is_ok_and(|caps| !caps.formats.is_empty()))
+        .map(|d| CameraInfo {
+            id: d.id.0,
+            name: d.name,
+        })
+        .collect()
 }
 
 /// A running source, holding its newest frame for the engine to take.
@@ -31,17 +53,20 @@ impl Capture {
         let latest = Arc::new(Mutex::new(None));
         let sink = latest.clone();
         let control = match source {
-            Source::Camera(index) => {
+            Source::Camera(id) => {
                 let mut frames = 0u64;
-                Control::Camera(cameras::pump::spawn(open_camera(index)?, move |frame| {
-                    frames += 1;
-                    let picture = Picture::Camera(frame);
-                    // The preview converts every frame it's given to RGBA; half the camera's rate is plenty.
-                    if frames.is_multiple_of(2) {
-                        preview.publish(picture.clone());
-                    }
-                    *sink.lock().unwrap() = Some(picture);
-                }))
+                Control::Camera(cameras::pump::spawn(
+                    open_camera(id.as_deref())?,
+                    move |frame| {
+                        frames += 1;
+                        let picture = Picture::Camera(frame);
+                        // The preview converts every frame it's given to RGBA; half the camera's rate is plenty.
+                        if frames.is_multiple_of(2) {
+                            preview.publish(picture.clone());
+                        }
+                        *sink.lock().unwrap() = Some(picture);
+                    },
+                ))
             }
             Source::Demo => Control::Demo(Demo::start(move |picture| {
                 preview.publish(picture.clone());
@@ -71,19 +96,20 @@ impl Capture {
     }
 }
 
-fn open_camera(index: usize) -> Result<cameras::Camera, String> {
-    let mut devices = cameras::devices().map_err(|e| format!("listing cameras: {e}"))?;
-    // Number cameras like OpenCV does: by device path, skipping metadata nodes that can't capture.
-    devices.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+fn open_camera(id: Option<&str>) -> Result<cameras::Camera, String> {
+    let devices = cameras::devices().map_err(|e| format!("listing cameras: {e}"))?;
+    let usable = list_cameras();
+    let wanted = id
+        .or_else(|| usable.first().map(|c| c.id.as_str()))
+        .ok_or("no camera found")?;
     let device = devices
         .into_iter()
-        .filter(|d| cameras::probe(d).is_ok_and(|caps| !caps.formats.is_empty()))
-        .nth(index)
-        .ok_or_else(|| format!("no camera {index}"))?;
+        .find(|d| d.id.0 == wanted)
+        .ok_or_else(|| format!("camera {wanted} not found"))?;
     let config = choose_format(&device)?;
     let camera =
         cameras::open(&device, config).map_err(|e| format!("opening {}: {e}", device.name))?;
-    tracing::info!("camera: {}", device.name);
+    tracing::info!("camera: {} ({})", device.name, device.id.0);
     Ok(camera)
 }
 

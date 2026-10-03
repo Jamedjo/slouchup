@@ -1,0 +1,9 @@
+[package]
+name = "camera-drift"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Estimate how far a webcam has tilted by tracking the background around a person"
+
+[dependencies]

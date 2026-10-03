@@ -43,6 +43,8 @@ struct Tray {
     status: MenuItem,
     pause: MenuItem,
     icons: [(Mood, Icon); 3],
+    /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
+    shown: std::cell::RefCell<(Option<Mood>, String)>,
 }
 
 impl Tray {
@@ -76,14 +78,22 @@ impl Tray {
             status,
             pause,
             icons,
+            shown: Default::default(),
         }
     }
 
     fn show(&self, mood: Mood, status: &str) {
-        if let Some((_, icon)) = self.icons.iter().find(|(m, _)| *m == mood) {
+        let mut shown = self.shown.borrow_mut();
+        if shown.0 != Some(mood)
+            && let Some((_, icon)) = self.icons.iter().find(|(m, _)| *m == mood)
+        {
             let _ = self.icon.set_icon(Some(icon.clone()));
+            shown.0 = Some(mood);
         }
-        self.status.set_text(status);
+        if shown.1 != status {
+            self.status.set_text(status);
+            shown.1 = status.to_string();
+        }
     }
 }
 

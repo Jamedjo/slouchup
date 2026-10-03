@@ -87,7 +87,7 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title(APP_NAME)
-        .with_visible(args.show || args.game)
+        .with_visible(args.show)
         .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 600.0));
     let desktop = Config::new()
         .with_window(window)

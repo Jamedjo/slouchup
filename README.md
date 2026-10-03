@@ -7,13 +7,9 @@ It finds your face, notes where your eyes sit and how big your face looks when y
 well, then nags when your eyes sink or your face grows as you lean towards the screen.
 Everything runs on your computer; no frame leaves it.
 
-| Sitting well | Slouching |
-|---|---|
-| ![Upright posture with the eye line on the baseline](docs/screenshots/good-posture.png) | ![Head sunk below the slouch line](docs/screenshots/slouching.png) |
-
-| Leaning in | Calibration game |
-|---|---|
-| ![Leaning towards the screen, with the nag notification](docs/screenshots/leaning.png) | ![A full-screen calibration step](docs/screenshots/calibration-game.png) |
+| Sitting well | Slouching | Leaning in |
+|---|---|---|
+| ![Upright posture with the eye line on the baseline](docs/screenshots/good-posture.png) | ![Head sunk below the slouch line](docs/screenshots/slouching.png) | ![Leaning towards the screen, with the nag notification](docs/screenshots/leaning.png) |
 
 The person in the screenshots is drawn, not filmed: `--demo` swaps the webcam for an illustrated
 stand-in who sits up, sinks and leans in, while detection runs on it for real.
@@ -33,6 +29,14 @@ grey when it can't see you or is paused. Its menu shows the current status and h
 - **Pause** and **Quit**.
 
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
+
+### Calibration game
+
+Each step fills a screen: sit up looking at each of your screens in turn, then slouch, sit up,
+and lean in, with a small view of your camera to check you're in frame. Slouch then sets its
+limits halfway between how you sit and how you slouch.
+
+![A calibration step filling the left screen, telling the drawn person where to look](docs/screenshots/calibration-game.png)
 
 The baseline also follows you slowly: it catches up within minutes when you sit better than it,
 but only over half an hour when you sit worse, so gradual slouching isn't quietly accepted.

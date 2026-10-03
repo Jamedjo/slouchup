@@ -1,18 +1,23 @@
 #!/bin/sh
 # Regenerates docs/screenshots from the demo person, in a headless sway session with its own
 # D-Bus session, so nothing appears on the real desktop or in its tray.
-# Needs sway, grim and swaync. Run from the repository root after `cargo build --release`.
+# Needs sway, grim, swaync, jq and ImageMagick. Run from the repository root after
+# `cargo build --release`.
 set -e
 
 if [ "$1" != "--inside" ]; then
     work=$(mktemp -d)
     cat > "$work/config" <<EOF
-output HEADLESS-1 resolution 1100x860 bg #1b1d26 solid_color
+output HEADLESS-1 resolution 1100x860 position 0 0 bg #1b1d26 solid_color
+output HEADLESS-2 resolution 1100x860 position 1100 0 bg #1b1d26 solid_color
+focus output HEADLESS-1
 default_border none
 exec swaync
 exec "$0" --inside "$work"
 EOF
-    WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 dbus-run-session -- sway -c "$work/config"
+    # Two screens, so the calibration game has one to point at.
+    WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=2 WLR_LIBINPUT_NO_DEVICES=1 \
+        dbus-run-session -- sway -c "$work/config"
     rm -rf "$work"
     exit 0
 fi
@@ -21,7 +26,7 @@ work=$2
 out=docs/screenshots
 mkdir -p "$out"
 app=target/release/slouch
-shot() { grim "$out/$1.png"; }
+shot() { grim -o HEADLESS-1 "$out/$1.png"; }
 
 # The demo person sits up for 8 seconds, sinks for 5, sits up for 6, then leans in for 5.
 "$app" --demo --show > "$work/watch.log" 2>&1 &
@@ -34,9 +39,13 @@ kill $!
 sleep 3 && swaync-client -C > /dev/null && swaymsg -q '[title="Slouch settings"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "Slouch settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
 kill $!
 
-# The game with one screen: sit up, slump, sit up again, lean.
+# The game's first step: sit up and look at one of the two screens. Whichever screen holds the
+# full-screen prompt is the busier picture; the other is plain background.
 "$app" --demo --game > "$work/game.log" 2>&1 &
-sleep 9.5 && shot calibration-game
+sleep 7 && swaync-client -C > /dev/null
+grim -o HEADLESS-1 "$work/screen-1.png" && grim -o HEADLESS-2 "$work/screen-2.png"
 kill $!
+busiest=$(for f in "$work"/screen-*.png; do echo "$(identify -format '%[standard-deviation]' "$f") $f"; done | sort -rn | head -1 | cut -d' ' -f2)
+cp "$busiest" "$out/calibration-game.png"
 
 swaymsg exit

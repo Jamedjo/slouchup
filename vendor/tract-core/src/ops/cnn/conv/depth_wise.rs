@@ -43,6 +43,8 @@ impl EvalOp for DepthWise {
                 )
             };
         }
+        // aarch64 already has a hand-written kernel in tract-linalg, reached through eval_gen.
+        #[cfg(target_arch = "x86_64")]
         if dt == f32::datum_type()
             && let Some(out) = self.eval_3x3_planar_f32(&inputs)?
         {
@@ -52,6 +54,7 @@ impl EvalOp for DepthWise {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 impl DepthWise {
     /// 3x3, stride 1, pad 1 over channel-first planes: rows of whole slices, which vectorise.
     fn eval_3x3_planar_f32(&self, inputs: &[TValue]) -> TractResult<Option<Tensor>> {
@@ -87,22 +90,39 @@ impl DepthWise {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 fn dw3x3_plane(input: &[f32], out: &mut [f32], k: &[f32], bias: f32, h: usize, w: usize) {
     #[cfg(target_arch = "x86_64")]
-    if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-        return unsafe { dw3x3_plane_avx2(input, out, k, bias, h, w) };
+    {
+        if is_x86_feature_detected!("avx512f") {
+            return unsafe { dw3x3_plane_avx512(input, out, k, bias, h, w) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            return unsafe { dw3x3_plane_avx2(input, out, k, bias, h, w) };
+        }
     }
-    dw3x3_plane_generic(input, out, k, bias, h, w)
+    dw3x3_plane_generic::<false>(input, out, k, bias, h, w)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn dw3x3_plane_avx512(input: &[f32], out: &mut [f32], k: &[f32], bias: f32, h: usize, w: usize) {
+    dw3x3_plane_generic::<true>(input, out, k, bias, h, w)
 }
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn dw3x3_plane_avx2(input: &[f32], out: &mut [f32], k: &[f32], bias: f32, h: usize, w: usize) {
-    dw3x3_plane_generic(input, out, k, bias, h, w)
+    dw3x3_plane_generic::<true>(input, out, k, bias, h, w)
 }
 
+#[cfg(target_arch = "x86_64")]
+/// Whole-row slices, so the compiler vectorises for whichever features the caller enabled.
+/// `FMA` fuses each multiply-add, which is only fast where the hardware has it; elsewhere
+/// `mul_add` becomes a slow library call.
 #[inline(always)]
-fn dw3x3_plane_generic(input: &[f32], out: &mut [f32], k: &[f32], bias: f32, h: usize, w: usize) {
+fn dw3x3_plane_generic<const FMA: bool>(input: &[f32], out: &mut [f32], k: &[f32], bias: f32, h: usize, w: usize) {
+    let madd = |i: f32, k: f32, o: f32| if FMA { i.mul_add(k, o) } else { o + i * k };
     for y in 0..h {
         let orow = &mut out[y * w..(y + 1) * w];
         orow.fill(bias);
@@ -111,13 +131,13 @@ fn dw3x3_plane_generic(input: &[f32], out: &mut [f32], k: &[f32], bias: f32, h: 
             let irow = &input[iy * w..(iy + 1) * w];
             let (k0, k1, k2) = (k[ky * 3], k[ky * 3 + 1], k[ky * 3 + 2]);
             for (o, i) in orow.iter_mut().zip(irow) {
-                *o += i * k1;
+                *o = madd(*i, k1, *o);
             }
             for (o, i) in orow[1..].iter_mut().zip(&irow[..w - 1]) {
-                *o += i * k0;
+                *o = madd(*i, k0, *o);
             }
             for (o, i) in orow[..w - 1].iter_mut().zip(&irow[1..]) {
-                *o += i * k2;
+                *o = madd(*i, k2, *o);
             }
         }
     }

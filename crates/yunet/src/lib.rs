@@ -4,10 +4,41 @@
 //! model is exported for a fixed 640x640 input, but nothing in it depends on the size, so the
 //! detector forgets the exported shapes and can run at any size divisible by 32. Smaller inputs
 //! are much faster; a face filling a webcam frame is still found reliably at 320x256.
+//!
+//! Box and landmark coordinates aren't clipped: a face at the edge of the image can have a
+//! box reaching past it.
+//!
+//! The slouch workspace this crate lives in patches tract with faster x86 kernels for YuNet's
+//! depthwise convolutions, about four times quicker. Used from crates.io, this crate gets
+//! upstream tract and that speed-up doesn't apply.
+
+use std::fmt;
 
 use tract_onnx::prelude::*;
 
-pub use tract_onnx::prelude::{TractError as Error, TractResult as Result};
+/// Loading or running the model failed. The cause is kept as text, so tract's own error type
+/// doesn't become part of this crate's API.
+#[derive(Debug)]
+pub struct Error(String);
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<TractError> for Error {
+    fn from(error: TractError) -> Self {
+        Error(format!("{error:#}"))
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Outputs per feature level: class score, objectness, box, landmarks.
+const OUTPUT_WIDTHS: [usize; 4] = [1, 1, 4, 10];
 
 /// The largest feature-map stride; input sides must be multiples of it.
 const MAX_STRIDE: usize = 32;
@@ -46,17 +77,31 @@ impl Landmarks {
     }
 }
 
+/// A YuNet model prepared for one input size.
 pub struct Detector {
     model: std::sync::Arc<TypedRunnableModel>,
     input_width: usize,
     input_height: usize,
+    /// Faces scoring below this (0 to 1) are dropped. 0.7 by default, as in OpenCV.
     pub score_threshold: f32,
+    /// Overlapping boxes beyond this intersection-over-union keep only the best. 0.3 by default.
     pub nms_threshold: f32,
+}
+
+impl fmt::Debug for Detector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Detector")
+            .field("input_width", &self.input_width)
+            .field("input_height", &self.input_height)
+            .field("score_threshold", &self.score_threshold)
+            .field("nms_threshold", &self.nms_threshold)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Detector {
     /// Load the model for images up to `width` x `height`; each side is rounded up to a multiple of 32.
-    pub fn new(model: &[u8], width: usize, height: usize) -> TractResult<Self> {
+    pub fn new(model: &[u8], width: usize, height: usize) -> Result<Self> {
         let input_width = width.div_ceil(MAX_STRIDE) * MAX_STRIDE;
         let input_height = height.div_ceil(MAX_STRIDE) * MAX_STRIDE;
         let mut graph = tract_onnx::onnx().model_for_read(&mut &*model)?;
@@ -74,15 +119,15 @@ impl Detector {
 
     /// Find faces in a tightly packed RGB image no larger than the size given to [`Detector::new`].
     /// Faces come back best first.
-    pub fn detect(&self, rgb: &[u8], width: usize, height: usize) -> TractResult<Vec<Face>> {
+    pub fn detect(&self, rgb: &[u8], width: usize, height: usize) -> Result<Vec<Face>> {
         if width > self.input_width || height > self.input_height {
-            return Err(TractError::msg(format!(
+            return Err(Error(format!(
                 "{width}x{height} image is larger than the {}x{} detector",
                 self.input_width, self.input_height
             )));
         }
         if rgb.len() != width * height * 3 {
-            return Err(TractError::msg(format!(
+            return Err(Error(format!(
                 "expected {} bytes of RGB, got {}",
                 width * height * 3,
                 rgb.len()
@@ -91,6 +136,12 @@ impl Detector {
         let outputs = self
             .model
             .run(tvec!(self.blob(rgb, width, height).into()))?;
+        if outputs.len() != STRIDES.len() * OUTPUT_WIDTHS.len() {
+            return Err(Error(format!(
+                "expected YuNet's 12 outputs, got {}",
+                outputs.len()
+            )));
+        }
         let mut faces = Vec::new();
         for (level, stride) in STRIDES.into_iter().enumerate() {
             let (cls, obj) = (
@@ -108,9 +159,15 @@ impl Detector {
                 contiguous(&kps)?,
             );
             let columns = self.input_width / stride;
+            let cells = columns * (self.input_height / stride);
+            for (output, width) in [cls, obj, bbox, kps].iter().zip(OUTPUT_WIDTHS) {
+                if output.len() != cells * width {
+                    return Err(Error("model outputs don't have YuNet's shape".into()));
+                }
+            }
             for (index, (&cls, &obj)) in cls.iter().zip(obj).enumerate() {
                 let score = (cls.clamp(0.0, 1.0) * obj.clamp(0.0, 1.0)).sqrt();
-                if score < self.score_threshold {
+                if score.is_nan() || score < self.score_threshold {
                     continue;
                 }
                 let s = stride as f32;
@@ -158,9 +215,9 @@ impl Detector {
     }
 }
 
-fn contiguous<'a>(view: &'a tract_ndarray::ArrayViewD<'_, f32>) -> TractResult<&'a [f32]> {
+fn contiguous<'a>(view: &'a tract_ndarray::ArrayViewD<'_, f32>) -> Result<&'a [f32]> {
     view.as_slice()
-        .ok_or_else(|| TractError::msg("model output is not contiguous"))
+        .ok_or_else(|| Error("model output is not contiguous".into()))
 }
 
 /// Drop the shapes recorded at export time so tract re-derives them from the new input size.

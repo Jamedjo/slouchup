@@ -54,7 +54,13 @@ fn main() {
     } else {
         // `--camera N` picks by position, as OpenCV numbers cameras; otherwise the saved choice.
         let camera = match args.camera {
-            Some(index) => source::list_cameras().get(index).map(|c| c.id.clone()),
+            Some(index) => match source::list_cameras().get(index) {
+                Some(camera) => Some(camera.id.clone()),
+                None => {
+                    eprintln!("No camera {index}; using the saved choice instead");
+                    preferences.camera.clone()
+                }
+            },
             None => preferences.camera.clone(),
         };
         (
@@ -62,17 +68,14 @@ fn main() {
             preferences.settings(config::load_thresholds()),
         )
     };
-    if let Err(error) = Engine::start(
+    Engine::start(
         source,
         settings,
         preview.clone(),
-        Notifier::new(files.clone()),
+        files,
         view_tx,
         command_rx,
-    ) {
-        tracing::error!("{error}");
-        Notifier::new(files).info("Slouch can't start 😿", &error);
-    }
+    );
     let bridge = ui::Bridge {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),

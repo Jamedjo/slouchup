@@ -9,6 +9,7 @@ use crate::camera_view::FrameSlot;
 use crate::demo::Demo;
 use crate::frames::Picture;
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum Source {
     /// A camera by device id, or the first that can capture.
     Camera(Option<String>),
@@ -22,11 +23,12 @@ pub struct CameraInfo {
     pub name: String,
 }
 
-/// Cameras that can capture, numbered as OpenCV numbers them: by device path, without the
+/// Cameras that can capture, in device order (on Linux, as OpenCV numbers them), without the
 /// metadata nodes that some webcams also expose.
 pub fn list_cameras() -> Vec<CameraInfo> {
     let mut devices = cameras::devices().unwrap_or_default();
-    devices.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+    // Shorter ids first keeps /dev/video2 ahead of /dev/video10.
+    devices.sort_by(|a, b| (a.id.0.len(), &a.id.0).cmp(&(b.id.0.len(), &b.id.0)));
     devices
         .into_iter()
         .filter(|d| cameras::probe(d).is_ok_and(|caps| !caps.formats.is_empty()))
@@ -37,15 +39,27 @@ pub fn list_cameras() -> Vec<CameraInfo> {
         .collect()
 }
 
-/// A running source, holding its newest frame for the engine to take.
+/// A running source, holding its newest frame for the engine to take. Dropping it releases
+/// the camera, so the camera's light goes off.
 pub struct Capture {
     latest: Arc<Mutex<Option<Picture>>>,
-    control: Control,
+    control: Option<Control>,
 }
 
 enum Control {
     Camera(cameras::pump::Pump),
     Demo(Demo),
+}
+
+impl Drop for Capture {
+    fn drop(&mut self) {
+        match self.control.take() {
+            // Joining, so the device is free before anything opens it again.
+            Some(Control::Camera(pump)) => cameras::pump::stop_and_join(pump),
+            Some(Control::Demo(demo)) => demo.stop(),
+            None => {}
+        }
+    }
 }
 
 impl Capture {
@@ -73,36 +87,44 @@ impl Capture {
                 *sink.lock().unwrap() = Some(picture);
             })),
         };
-        Ok(Self { latest, control })
+        Ok(Self {
+            latest,
+            control: Some(control),
+        })
     }
 
     pub fn take(&self) -> Option<Picture> {
         self.latest.lock().unwrap().take()
     }
 
-    pub fn set_active(&self, active: bool) {
-        match &self.control {
-            Control::Camera(pump) => cameras::pump::set_active(pump, active),
-            Control::Demo(demo) => demo.set_active(active),
-        }
-    }
-
     /// Have the demo person strike the pose the calibration game asks for; a real person reads
     /// the prompts instead.
     pub fn act(&self, pose: Option<Pose>) {
-        if let Control::Demo(demo) = &self.control {
+        if let Some(Control::Demo(demo)) = &self.control {
             demo.act(pose);
         }
     }
 }
 
+/// Open the camera with `id`, or the first one that works if it's not given or not plugged in.
+/// The saved choice stays as it is, so a docked webcam is used again once it's back.
 fn open_camera(id: Option<&str>) -> Result<cameras::Camera, String> {
-    let devices = cameras::devices().map_err(|e| format!("listing cameras: {e}"))?;
     let usable = list_cameras();
-    let wanted = id
-        .or_else(|| usable.first().map(|c| c.id.as_str()))
-        .ok_or("no camera found")?;
-    let device = devices
+    let present = |id: &str| usable.iter().any(|c| c.id == id);
+    let wanted = match id {
+        Some(id) if present(id) => id,
+        _ => {
+            if let Some(id) = id {
+                tracing::warn!("camera {id} isn't connected; using the first that works");
+            }
+            usable
+                .first()
+                .map(|c| c.id.as_str())
+                .ok_or("no camera found")?
+        }
+    };
+    let device = cameras::devices()
+        .map_err(|e| format!("listing cameras: {e}"))?
         .into_iter()
         .find(|d| d.id.0 == wanted)
         .ok_or_else(|| format!("camera {wanted} not found"))?;

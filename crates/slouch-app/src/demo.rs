@@ -24,11 +24,11 @@ const ROUTINE: [(Pose, f32); 4] = [
     (Pose::Lean, 5.0),
 ];
 
-/// Shared with the drawing thread: what to act out, and whether to draw at all.
+/// Shared with the drawing thread: what to act out, and when to stop.
 #[derive(Clone, Default)]
 pub struct Demo {
     requested: Arc<Mutex<Option<Pose>>>,
-    paused: Arc<AtomicBool>,
+    stopped: Arc<AtomicBool>,
 }
 
 impl Demo {
@@ -40,11 +40,8 @@ impl Demo {
             .spawn(move || {
                 let started = Instant::now();
                 let mut shown = Shape::of(Pose::Upright);
-                loop {
+                while !shared.stopped.load(Ordering::Relaxed) {
                     std::thread::sleep(FRAME_INTERVAL);
-                    if shared.paused.load(Ordering::Relaxed) {
-                        continue;
-                    }
                     let pose = shared
                         .requested
                         .lock()
@@ -69,8 +66,8 @@ impl Demo {
         *self.requested.lock().unwrap() = pose;
     }
 
-    pub fn set_active(&self, active: bool) {
-        self.paused.store(!active, Ordering::Relaxed);
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::Relaxed);
     }
 }
 

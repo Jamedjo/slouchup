@@ -38,12 +38,7 @@ pub fn half_size(picture: &Picture) -> Option<Half> {
     let (width, height) = (width as usize, height as usize);
     let rgb = match picture {
         Picture::Camera(frame) if frame.pixel_format == PixelFormat::Yuyv => {
-            return Some(yuyv_half(
-                &frame.plane_primary,
-                width,
-                height,
-                frame.stride as usize,
-            ));
+            return yuyv_half(&frame.plane_primary, width, height, frame.stride as usize);
         }
         Picture::Camera(frame) => cameras::to_rgb8(frame).ok()?,
         Picture::Rgba { pixels, .. } => pixels
@@ -53,6 +48,10 @@ pub fn half_size(picture: &Picture) -> Option<Half> {
             .flat_map(|&[r, g, b, _]| [r, g, b])
             .collect(),
     };
+    // Decoders can disagree with the frame's stated size; better to skip a frame than panic.
+    if rgb.len() != width * height * 3 {
+        return None;
+    }
     let rgb = halve(&rgb, width, height);
     let grey = rgb
         .as_chunks::<3>()
@@ -90,8 +89,11 @@ pub fn crop(
 
 /// Each YUYV group of four bytes is two pixels sharing their colour, so taking one group per
 /// output pixel from every other row halves the frame without converting the rest.
-fn yuyv_half(data: &[u8], width: usize, height: usize, stride: usize) -> Half {
+fn yuyv_half(data: &[u8], width: usize, height: usize, stride: usize) -> Option<Half> {
     let stride = if stride == 0 { width * 2 } else { stride };
+    if stride < width * 2 || height == 0 || data.len() < (height - 1) * stride + width * 2 {
+        return None;
+    }
     let (w, h) = (width / 2, height / 2);
     let mut rgb = Vec::with_capacity(w * h * 3);
     let mut grey = Vec::with_capacity(w * h);
@@ -103,12 +105,12 @@ fn yuyv_half(data: &[u8], width: usize, height: usize, stride: usize) -> Half {
             grey.push(luma);
         }
     }
-    Half {
+    Some(Half {
         rgb,
         grey,
         width: w,
         height: h,
-    }
+    })
 }
 
 /// BT.601 limited range, matching the `cameras` crate's own conversion.
@@ -163,6 +165,11 @@ mod tests {
     }
 
     #[test]
+    fn short_yuyv_buffers_are_skipped() {
+        assert!(yuyv_half(&[0; 100], 64, 48, 0).is_none());
+    }
+
+    #[test]
     fn crop_copies_the_window_and_pads_past_the_edge() {
         let rgb: Vec<u8> = (1..=4 * 4 * 3).map(|i| i as u8).collect();
         let window = crop(&rgb, 4, 4, 3, 2, 2);
@@ -176,7 +183,7 @@ mod tests {
     fn yuyv_shortcut_matches_full_conversion() {
         let (width, height) = (64, 48);
         let data = gradient(width, height);
-        let fast = yuyv_half(&data, width, height, 0);
+        let fast = yuyv_half(&data, width, height, 0).unwrap();
 
         let mut full = Vec::with_capacity(width * height * 3);
         for &[y0, u, y1, v] in data.as_chunks::<4>().0 {

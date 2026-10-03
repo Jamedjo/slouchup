@@ -51,6 +51,7 @@ impl Notifier {
 
     #[cfg(all(unix, not(target_os = "macos")))]
     pub fn nag(&mut self, reason: &str) {
+        let reason = escape(reason);
         let body = format!(
             "<span foreground=\"#ff5f87\"><b>{reason}</b></span>\n\
              <span foreground=\"#5fffaf\">Shoulders back,</span> \
@@ -86,6 +87,13 @@ impl Notifier {
             handle.close();
         }
     }
+}
+
+/// Text made safe to put in a notification body, which Linux servers read as markup.
+pub fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Drop `<…>` tags, for notification systems that would show them literally.

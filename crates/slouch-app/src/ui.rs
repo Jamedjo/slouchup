@@ -116,7 +116,8 @@ pub fn App() -> Element {
     let mut paused = use_signal(|| false);
     let monitors = use_signal(Vec::<MonitorHandle>::new);
     let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));
-    let mut look_here_window = use_signal(|| None::<(Option<usize>, DesktopContext)>);
+    // The game's full-screen window: which screen it's for, and the window once it has opened.
+    let mut look_here_window = use_signal(|| None::<(Option<usize>, Option<DesktopContext>)>);
 
     let receiver = use_hook({
         let bridge = bridge.clone();
@@ -235,7 +236,7 @@ pub fn App() -> Element {
         move || {
             let target = view.read().look_at.clone();
             let Some(target) = target else {
-                if let Some((_, old)) = look_here_window.take() {
+                if let Some((_, Some(old))) = look_here_window.take() {
                     old.close();
                 }
                 return;
@@ -249,7 +250,7 @@ pub fn App() -> Element {
             {
                 return;
             }
-            if let Some((_, old)) = look_here_window.take() {
+            if let Some((_, Some(old))) = look_here_window.take() {
                 old.close();
             }
             let main = window();
@@ -273,9 +274,20 @@ pub fn App() -> Element {
                     .with_always_on_top(true)
                     .with_fullscreen(Some(Fullscreen::Borderless(monitor))),
             );
+            // Recorded before it opens, since the view updates again before a window is ready.
+            look_here_window.set(Some((screen, None)));
             let pending = main.new_window(dom, config);
             spawn(async move {
-                look_here_window.set(Some((screen, pending.await)));
+                let opened = pending.await;
+                if look_here_window
+                    .peek()
+                    .as_ref()
+                    .is_some_and(|(s, w)| *s == screen && w.is_none())
+                {
+                    look_here_window.set(Some((screen, Some(opened))));
+                } else {
+                    opened.close();
+                }
             });
         }
     });

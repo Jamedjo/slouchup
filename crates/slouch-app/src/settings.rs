@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use posture::{Settings, Thresholds};
 
 use crate::config::{self, Preferences};
-use crate::engine::Command;
+use crate::engine::{Change, Command};
 use crate::source;
 use crate::ui::Bridge;
 
@@ -32,9 +32,9 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
     let open = handle.open.clone();
     use_drop(move || open.store(false, Ordering::Relaxed));
     let cameras = use_hook(source::list_cameras);
-    let persist = handle.bridge.persist;
+    // The engine applies and saves each change; this window only shows what it last chose.
     let mut preferences = use_signal(|| Preferences {
-        camera: if persist {
+        camera: if handle.bridge.persist {
             config::load_preferences().camera
         } else {
             None
@@ -44,26 +44,14 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
         cooldown: initial.cooldown,
     });
     let mut thresholds = use_signal(|| initial.thresholds);
-
     let bridge = handle.bridge.clone();
-    let apply = use_callback(move |()| {
-        let chosen = preferences();
-        bridge.send(Command::Configure(chosen.settings(thresholds())));
-        if persist {
-            let saved = config::save_preferences(&chosen)
-                .and_then(|_| config::save_thresholds(thresholds()));
-            if let Err(error) = saved {
-                tracing::warn!("couldn't save settings: {error}");
-            }
-        }
-    });
+    let send = use_callback(move |change: Change| bridge.send(Command::Change(change)));
 
     let bridge = handle.bridge.clone();
     let mut choose_camera = move |id: String| {
         let id = (!id.is_empty()).then_some(id);
         preferences.with_mut(|p| p.camera = id.clone());
         bridge.send(Command::UseCamera(id));
-        apply.call(());
     };
 
     let chosen = preferences();
@@ -95,13 +83,13 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     label: "Eyes drop by",
                     shown: format!("{:.2} face heights", limits.drop),
                     min: 0.2, max: 1.5, step: 0.01, value: limits.drop as f64,
-                    onchange: move |v: f64| { thresholds.with_mut(|t| t.drop = v as f32); apply.call(()) },
+                    onchange: move |v: f64| { thresholds.with_mut(|t| t.drop = v as f32); send.call(Change::Drop(v as f32)) },
                 }
                 Slider {
                     label: "Face grows by",
                     shown: format!("{:.0}%", limits.lean * 100.0),
                     min: 0.05, max: 0.6, step: 0.01, value: limits.lean as f64,
-                    onchange: move |v: f64| { thresholds.with_mut(|t| t.lean = v as f32); apply.call(()) },
+                    onchange: move |v: f64| { thresholds.with_mut(|t| t.lean = v as f32); send.call(Change::Lean(v as f32)) },
                 }
                 p { class: "hint", "The calibration game sets both from how you actually sit." }
             }
@@ -112,19 +100,19 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     label: "Nag after slouching for",
                     shown: format!("{:.1} s", chosen.grace),
                     min: 0.5, max: 10.0, step: 0.5, value: chosen.grace,
-                    onchange: move |v| { preferences.with_mut(|p| p.grace = v); apply.call(()) },
+                    onchange: move |v| { preferences.with_mut(|p| p.grace = v); send.call(Change::Grace(v)) },
                 }
                 Slider {
                     label: "Wait between separate slouches",
                     shown: format!("{:.0} s", chosen.min_gap),
                     min: 3.0, max: 120.0, step: 1.0, value: chosen.min_gap,
-                    onchange: move |v| { preferences.with_mut(|p| p.min_gap = v); apply.call(()) },
+                    onchange: move |v| { preferences.with_mut(|p| p.min_gap = v); send.call(Change::MinGap(v)) },
                 }
                 Slider {
                     label: "Repeat during one long slouch every",
                     shown: format!("{:.0} s", chosen.cooldown),
                     min: 15.0, max: 600.0, step: 15.0, value: chosen.cooldown,
-                    onchange: move |v| { preferences.with_mut(|p| p.cooldown = v); apply.call(()) },
+                    onchange: move |v| { preferences.with_mut(|p| p.cooldown = v); send.call(Change::Cooldown(v)) },
                 }
             }
 
@@ -134,7 +122,7 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                         let defaults = Preferences { camera: preferences().camera, ..Preferences::default() };
                         preferences.set(defaults);
                         thresholds.set(Thresholds::default());
-                        apply.call(());
+                        send.call(Change::Defaults);
                     },
                     "Restore defaults"
                 }

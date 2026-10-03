@@ -1,19 +1,20 @@
 //! The detection loop: camera frames in, posture decisions, notifications and UI snapshots out.
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use camera_drift::{CameraDrift, Grey, Rect};
 use crossbeam_channel::Receiver;
 use futures_channel::mpsc::UnboundedSender;
-use posture::{Action, Posture, Reading, Sample, Settings, State, Step, Tracker};
+use posture::{Action, Pose, Posture, Reading, Sample, Settings, State, Step, Thresholds, Tracker};
 use serde::Serialize;
 
-use crate::art::Mood;
+use crate::art::{Files, Mood};
 use crate::camera_view::FrameSlot;
 use crate::config;
 use crate::finder::FaceFinder;
 use crate::frames;
-use crate::notifier::Notifier;
+use crate::notifier::{Notifier, escape};
 use crate::source::{Capture, Source};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
@@ -24,6 +25,9 @@ const GAME_RECORD: Duration = Duration::from_secs(4);
 const RESULTS_SHOWN: Duration = Duration::from_secs(10);
 const RESULTS_CARD: Duration = Duration::from_secs(4);
 const RETRY_CALIBRATION: Duration = Duration::from_secs(5);
+/// No frame for this long means the camera has gone, say unplugged.
+const CAMERA_LOST: Duration = Duration::from_secs(4);
+const RETRY_CAMERA: Duration = Duration::from_secs(5);
 /// Laptop lids tilt rarely, so the background needn't be checked every frame.
 const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -33,9 +37,20 @@ pub enum Command {
         screens: Vec<String>,
     },
     Pause(bool),
-    Configure(Settings),
+    Change(Change),
     /// Switch camera, by device id or `None` for the first that works.
     UseCamera(Option<String>),
+}
+
+/// One setting changed in the settings window. Sent singly, so a window opened before a
+/// calibration game can't put back the limits the game replaced.
+pub enum Change {
+    Drop(f32),
+    Lean(f32),
+    Grace(f64),
+    MinGap(f64),
+    Cooldown(f64),
+    Defaults,
 }
 
 /// What the UI draws. Positions are in camera-frame pixels.
@@ -161,7 +176,14 @@ struct GameRecord {
 }
 
 pub struct Engine {
-    capture: Capture,
+    source: Source,
+    capture: Option<Capture>,
+    /// When the last frame arrived, to notice a camera that has gone.
+    last_frame: Instant,
+    reopen_at: Option<Instant>,
+    told_no_camera: bool,
+    /// Commands that arrived while calibrating or playing the game.
+    pending: VecDeque<Command>,
     preview: FrameSlot,
     persist: bool,
     finder: FaceFinder,
@@ -179,22 +201,29 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Run the engine on its own thread. The camera opens there too, so a slow or refused
+    /// camera never holds up the UI, and a missing one is retried.
     pub fn start(
         source: Source,
         settings: Settings,
         preview: FrameSlot,
-        notifier: Notifier,
+        files: Files,
         events: UnboundedSender<View>,
         commands: Receiver<Command>,
-    ) -> Result<(), String> {
+    ) {
         // A demo is for looking at, so it mustn't overwrite the real calibration.
         let persist = !matches!(source, Source::Demo);
-        let capture = Capture::start(source, preview.clone())?;
+        let crashed = (Notifier::new(files.clone()), events.clone());
         let engine = Engine {
-            capture,
+            source,
+            capture: None,
+            last_frame: Instant::now(),
+            reopen_at: None,
+            told_no_camera: false,
+            pending: VecDeque::new(),
             persist,
             finder: FaceFinder::new(),
-            notifier,
+            notifier: Notifier::new(files),
             events,
             commands,
             settings,
@@ -209,9 +238,21 @@ impl Engine {
         };
         std::thread::Builder::new()
             .name("slouch-engine".into())
-            .spawn(move || engine.run())
-            .map_err(|e| e.to_string())?;
-        Ok(())
+            .spawn(move || {
+                let run = std::panic::AssertUnwindSafe(|| engine.run());
+                if std::panic::catch_unwind(run).is_err() {
+                    let (notifier, events) = crashed;
+                    notifier.info(
+                        "Slouch stopped watching 😿",
+                        "Something went wrong; please restart it.",
+                    );
+                    let _ = events.unbounded_send(View {
+                        status: "Stopped after an error; please restart".into(),
+                        ..View::default()
+                    });
+                }
+            })
+            .expect("spawning the engine thread");
     }
 
     fn now(&self) -> f64 {
@@ -242,45 +283,21 @@ impl Engine {
     fn run(mut self) {
         let mut announce = true;
         loop {
-            while let Ok(command) = self.commands.try_recv() {
-                match command {
-                    Command::Recalibrate => {
-                        self.tracker = None;
-                        announce = true;
-                    }
-                    Command::Game { screens } => {
-                        if !self.play_game(&screens) && self.tracker.is_none() {
-                            announce = true;
-                        }
-                    }
-                    Command::Pause(paused) => {
-                        self.paused = paused;
-                        self.capture.set_active(!paused);
-                    }
-                    Command::Configure(settings) => {
-                        self.settings = settings;
-                        if let Some(tracker) = &mut self.tracker {
-                            tracker.settings = settings;
-                        }
-                    }
-                    Command::UseCamera(id) => {
-                        match Capture::start(Source::Camera(id), self.preview.clone()) {
-                            Ok(capture) => {
-                                // A different camera sees you from somewhere else, so start afresh.
-                                self.capture = capture;
-                                self.tracker = None;
-                                self.finder = FaceFinder::new();
-                                announce = true;
-                            }
-                            Err(error) => self.notifier.info("Couldn't switch camera 😿", &error),
-                        }
-                    }
-                }
+            while let Some(command) = self
+                .pending
+                .pop_front()
+                .or_else(|| self.commands.try_recv().ok())
+            {
+                self.handle(command, &mut announce);
             }
             if self.paused {
                 self.set_status(Mood::Idle, "Paused");
                 self.view.face = None;
                 self.publish();
+                std::thread::sleep(WATCH_INTERVAL);
+                continue;
+            }
+            if !self.camera_ready() {
                 std::thread::sleep(WATCH_INTERVAL);
                 continue;
             }
@@ -298,9 +315,154 @@ impl Engine {
         }
     }
 
+    fn handle(&mut self, command: Command, announce: &mut bool) {
+        match command {
+            Command::Recalibrate => {
+                self.tracker = None;
+                *announce = true;
+            }
+            Command::Game { screens } => {
+                if self.paused || !self.camera_ready() {
+                    self.notifier.info(
+                        "Calibration game",
+                        "The game needs the camera, so resume Slouch first.",
+                    );
+                } else if !self.play_game(&screens) && self.tracker.is_none() {
+                    *announce = true;
+                }
+            }
+            Command::Pause(paused) => {
+                self.paused = paused;
+                if paused {
+                    // Dropping the capture releases the camera, so its light goes off.
+                    self.capture = None;
+                    self.notifier.dismiss();
+                } else {
+                    self.reopen_at = None;
+                }
+            }
+            Command::Change(change) => self.change(change),
+            Command::UseCamera(id) => {
+                let wanted = Source::Camera(id);
+                if wanted == self.source && self.capture.is_some() {
+                    return;
+                }
+                // Release the old camera before opening, in case it's the same device.
+                self.capture = None;
+                self.source = wanted;
+                self.reopen_at = None;
+                self.told_no_camera = false;
+                // A different camera sees you from somewhere else, so start afresh.
+                self.tracker = None;
+                self.finder = FaceFinder::new();
+                *announce = true;
+                self.save_preferences();
+            }
+        }
+    }
+
+    fn change(&mut self, change: Change) {
+        let settings = &mut self.settings;
+        match change {
+            Change::Drop(drop) => settings.thresholds.drop = drop,
+            Change::Lean(lean) => settings.thresholds.lean = lean,
+            Change::Grace(grace) => settings.grace = grace,
+            Change::MinGap(gap) => settings.min_gap = gap,
+            Change::Cooldown(cooldown) => settings.cooldown = cooldown,
+            Change::Defaults => *settings = Settings::default(),
+        }
+        if let Some(tracker) = &mut self.tracker {
+            tracker.settings = self.settings;
+        }
+        self.save_thresholds(self.settings.thresholds);
+        self.save_preferences();
+    }
+
+    fn save_thresholds(&self, thresholds: Thresholds) {
+        if self.persist
+            && let Err(error) = config::save_thresholds(thresholds)
+        {
+            tracing::warn!("couldn't save thresholds: {error}");
+        }
+    }
+
+    fn save_preferences(&self) {
+        let Source::Camera(camera) = &self.source else {
+            return;
+        };
+        let preferences = config::Preferences {
+            camera: camera.clone(),
+            grace: self.settings.grace,
+            min_gap: self.settings.min_gap,
+            cooldown: self.settings.cooldown,
+        };
+        if self.persist
+            && let Err(error) = config::save_preferences(&preferences)
+        {
+            tracing::warn!("couldn't save settings: {error}");
+        }
+    }
+
+    /// Open the camera if it isn't open, and notice if an open one has stopped sending frames.
+    fn camera_ready(&mut self) -> bool {
+        if self.capture.is_some() {
+            if self.last_frame.elapsed() < CAMERA_LOST {
+                return true;
+            }
+            tracing::warn!("no frames for {CAMERA_LOST:?}; reopening the camera");
+            self.capture = None;
+            self.set_status(Mood::Idle, "Camera lost; trying again…");
+            self.reopen_at = Some(Instant::now() + RETRY_CAMERA);
+            self.publish();
+            return false;
+        }
+        if self.reopen_at.is_some_and(|at| Instant::now() < at) {
+            return false;
+        }
+        match Capture::start(self.source.clone(), self.preview.clone()) {
+            Ok(capture) => {
+                self.capture = Some(capture);
+                self.last_frame = Instant::now();
+                self.told_no_camera = false;
+                true
+            }
+            Err(error) => {
+                tracing::warn!("{error}");
+                self.set_status(Mood::Idle, format!("No camera: {error}"));
+                self.publish();
+                if !std::mem::replace(&mut self.told_no_camera, true) {
+                    self.notifier
+                        .info("Slouch can't see a camera 😿", &escape(&error));
+                }
+                self.reopen_at = Some(Instant::now() + RETRY_CAMERA);
+                false
+            }
+        }
+    }
+
+    /// Collect commands that arrive mid-calibration or mid-game, and say whether one of them
+    /// should cut it short. Further game requests are dropped, since one is already running.
+    fn interrupted(&mut self) -> bool {
+        while let Ok(command) = self.commands.try_recv() {
+            if !matches!(command, Command::Game { .. }) {
+                self.pending.push_back(command);
+            }
+        }
+        self.pending
+            .iter()
+            .any(|c| matches!(c, Command::Pause(true) | Command::UseCamera(_)))
+    }
+
+    fn act(&self, pose: Option<Pose>) {
+        if let Some(capture) = &self.capture {
+            capture.act(pose);
+        }
+    }
+
     /// Take the newest frame and find the face in it, at half resolution for speed.
     fn observe(&mut self) -> Option<Observation> {
-        let frame = self.capture.take()?;
+        let frame = self.capture.as_ref()?.take()?;
+        self.last_frame = Instant::now();
         let small = frames::half_size(&frame)?;
         let (width, height) = (small.width, small.height);
         let (frame_width, frame_height) = frame.size();
@@ -376,6 +538,9 @@ impl Engine {
         let end = Instant::now() + CALIBRATION;
         while Instant::now() < end {
             std::thread::sleep(BUSY_INTERVAL);
+            if self.interrupted() {
+                return false;
+            }
             let Some(seen) = self.observe() else { continue };
             if let Some(posture) = seen.posture(0.0) {
                 postures.push(posture);
@@ -419,10 +584,14 @@ impl Engine {
         let mut records = Vec::new();
         for (index, step) in steps.iter().enumerate() {
             let title = format!("{}/{}  {}", index + 1, steps.len(), step.prompt);
-            self.capture.act(Some(step.pose));
+            self.act(Some(step.pose));
             let start = Instant::now();
             while start.elapsed() < GAME_SETTLE + GAME_RECORD {
                 std::thread::sleep(BUSY_INTERVAL);
+                if self.interrupted() {
+                    self.abandon_game();
+                    return false;
+                }
                 let Some(seen) = self.observe() else { continue };
                 if drift.is_none() && seen.face.is_some() {
                     drift = Some(CameraDrift::new(seen.grey(), seen.person()));
@@ -484,13 +653,20 @@ impl Engine {
         self.finish_game(&steps, records, drift)
     }
 
+    fn abandon_game(&mut self) {
+        self.act(None);
+        self.view.look_at = None;
+        self.view.banner = None;
+        self.publish();
+    }
+
     fn finish_game(
         &mut self,
         steps: &[Step],
         records: Vec<GameRecord>,
         drift: Option<CameraDrift>,
     ) -> bool {
-        self.capture.act(None);
+        self.act(None);
         let samples: Vec<Sample> = records.iter().map(|r| r.sample).collect();
         let result = posture::score_game(steps, &samples);
         let dump = serde_json::json!({
@@ -501,12 +677,8 @@ impl Engine {
         });
         tracing::info!("game result: {result:?}");
         if self.persist {
-            let dir = config::games_dir();
-            let path = dir.join(format!("{}.json", unix_seconds()));
-            match std::fs::create_dir_all(&dir)
-                .and_then(|_| std::fs::write(&path, dump.to_string()))
-            {
-                Ok(()) => tracing::info!("game saved to {}", path.display()),
+            match config::save_game(unix_seconds(), &dump.to_string()) {
+                Ok(path) => tracing::info!("game saved to {}", path.display()),
                 Err(error) => tracing::warn!("couldn't save game: {error}"),
             }
         }
@@ -524,11 +696,7 @@ impl Engine {
             return false;
         };
         self.settings.thresholds = result.thresholds(self.settings.thresholds);
-        if self.persist
-            && let Err(error) = config::save_thresholds(self.settings.thresholds)
-        {
-            tracing::warn!("couldn't save thresholds: {error}");
-        }
+        self.save_thresholds(self.settings.thresholds);
         self.start_tracking(result.baseline, drift);
         let line = |name: &str, m: &posture::MetricResult| {
             let new = m

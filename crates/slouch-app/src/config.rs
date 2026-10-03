@@ -8,19 +8,36 @@ use serde::{Deserialize, Serialize};
 pub const APP_ID: &str = "slouch";
 pub const APP_NAME: &str = "Slouch";
 
+/// Per-user cache directory. Never a shared temporary one, where other users could plant files.
 pub fn cache_dir() -> PathBuf {
     dirs::cache_dir()
-        .unwrap_or_else(std::env::temp_dir)
+        .expect("a home directory for the cache")
         .join(APP_ID)
 }
 
-pub fn games_dir() -> PathBuf {
-    cache_dir().join("games")
+/// Recent calibration games kept for looking back at; older ones are deleted.
+const GAMES_KEPT: usize = 20;
+
+/// Save a calibration game's recording, readable only by you since it holds face positions.
+pub fn save_game(stamp: u64, json: &str) -> std::io::Result<PathBuf> {
+    let dir = cache_dir().join("games");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{stamp}.json"));
+    write_private(&path, json.as_bytes())?;
+    let mut games: Vec<PathBuf> = std::fs::read_dir(&dir)?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    games.sort();
+    for old in games.iter().rev().skip(GAMES_KEPT) {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(path)
 }
 
 fn config_file(name: &str) -> PathBuf {
     dirs::config_dir()
-        .unwrap_or_else(std::env::temp_dir)
+        .expect("a home directory for settings")
         .join(APP_ID)
         .join(name)
 }
@@ -29,9 +46,22 @@ fn thresholds_file() -> PathBuf {
     config_file("thresholds.json")
 }
 
+/// Written beside and then renamed over the old file, so a crash or a second writer never
+/// leaves a half-written file behind.
 fn write_json(path: PathBuf, value: &impl Serialize) -> std::io::Result<()> {
     std::fs::create_dir_all(path.parent().expect("file has a directory"))?;
-    std::fs::write(path, serde_json::to_string_pretty(value)?)
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, serde_json::to_string_pretty(value)?)?;
+    std::fs::rename(temporary, path)
+}
+
+fn write_private(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)?.write_all(contents)
 }
 
 /// Choices from the settings window. The limits live apart, in thresholds.json, which the

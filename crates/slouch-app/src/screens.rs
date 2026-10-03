@@ -18,7 +18,7 @@ pub fn describe(monitors: &[MonitorHandle]) -> Vec<String> {
     let distinct = |values: Vec<f64>| values.iter().any(|v| *v != values[0]);
     let stacked = distinct(rects.iter().map(|r| r.1).collect());
     let side_by_side = distinct(rects.iter().map(|r| r.0).collect());
-    rects
+    let mut names: Vec<String> = rects
         .iter()
         .map(|&(x, y, w, h)| {
             let across = (x + w / 2.0 - left) / (right - left);
@@ -37,8 +37,18 @@ pub fn describe(monitors: &[MonitorHandle]) -> Vec<String> {
                 });
             }
             format!("{} screen", parts.join("-"))
+                .trim_start()
+                .to_string()
         })
-        .collect()
+        .collect();
+    // Stacked or mirrored screens can share a position, so number any repeats.
+    for i in 0..names.len() {
+        let repeats = names[..i].iter().filter(|n| **n == names[i]).count();
+        if repeats > 0 {
+            names[i] = format!("{} {}", names[i], repeats + 1);
+        }
+    }
+    names
 }
 
 /// A laptop's own panel, which is where its webcam sits, for steps that don't name a screen.

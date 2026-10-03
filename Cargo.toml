@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# A patched dependency, tested on its own: cargo test --manifest-path vendor/tract-core/Cargo.toml
+exclude = ["vendor"]
 
 [workspace.package]
 edition = "2024"

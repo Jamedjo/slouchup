@@ -42,3 +42,8 @@ jobs:
       # Release, because face detection in the tests is very slow unoptimised.
       - name: Test
         run: cargo test --release --workspace
+
+      # The patched tract-core sits outside the workspace, so its own tests run separately.
+      - name: Test patched tract-core
+        if: runner.os == 'Linux'
+        run: cargo test --release --manifest-path vendor/tract-core/Cargo.toml

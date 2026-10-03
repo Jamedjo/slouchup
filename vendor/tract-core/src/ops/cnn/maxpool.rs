@@ -261,7 +261,8 @@ unsafe fn maxpool_2x2_f32(iptr: *const f32, optr: *mut f32, geo: &ConcretePoolGe
             for cc in 0..c {
                 let in_base = nn * in_stride + cc * ic_stride;
                 let out_base = nn * on_stride + cc * oc_stride;
-                if sh == 2 && sw == 2 && pt == 0 && pl == 0 && 2 * oh as isize <= h && 2 * ow as isize <= w {
+                // oh and ow must be non-zero: the slice lengths below subtract one from them.
+                if sh == 2 && sw == 2 && pt == 0 && pl == 0 && oh > 0 && ow > 0 && 2 * oh as isize <= h && 2 * ow as isize <= w {
                     let input = std::slice::from_raw_parts(iptr.offset(in_base), (2 * oh - 1) * ih_stride as usize + 2 * ow);
                     let output = std::slice::from_raw_parts_mut(optr.offset(out_base), (oh - 1) * oh_stride as usize + ow);
                     maxpool_2x2_s2(input, output, oh, ow, ih_stride as usize, oh_stride as usize);
@@ -388,6 +389,36 @@ mod tests {
         .into_tensor()
         .into_tvalue();
         (model, tvec!(input))
+    }
+
+    /// The 2x2 stride-2 fast path against the plain implementation, at sizes including ones
+    /// too small to hold a single window.
+    #[test]
+    fn stride_two_fast_path_matches_plain_at_awkward_sizes() {
+        for (h, w) in [(1, 1), (1, 4), (4, 1), (2, 2), (3, 5), (5, 3), (7, 9), (16, 16)] {
+            let mut model = TypedModel::default();
+            let source = model.add_source("data", f32::fact([1, 2, h, w])).unwrap();
+            let pool_spec = PoolSpec::new(
+                DataFormat::NCHW,
+                tvec![2, 2],
+                PaddingSpec::Valid,
+                None,
+                Some(tvec![2, 2]),
+                2,
+                2,
+            );
+            let op = MaxPool { pool_spec, with_index_outputs: None };
+            let out = model.wire_node("pool", op, &[source]).unwrap();
+            model.select_output_outlets(&out).unwrap();
+            let input = ndarray::Array4::from_shape_fn((1, 2, h, w), |(_, c, y, x)| {
+                ((c * 31 + y * 7 + x * 13) % 17) as f32
+            })
+            .into_tensor()
+            .into_tvalue();
+            let plain = model.clone().into_runnable().unwrap().run(tvec!(input.clone())).unwrap();
+            let fast = model.into_optimized().unwrap().into_runnable().unwrap().run(tvec!(input)).unwrap();
+            assert_eq!(*plain[0], *fast[0], "{h}x{w}");
+        }
     }
 
     #[test]

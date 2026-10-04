@@ -60,7 +60,10 @@ pub enum Change {
     MinGap(f64),
     Cooldown(f64),
     KeepHistory(bool),
-    Defaults,
+    /// Both slouch limits back to their defaults.
+    ResetLimits,
+    /// The nudge timings back to their defaults.
+    ResetNudges,
 }
 
 /// What the UI draws. Positions are in camera-frame pixels.
@@ -415,7 +418,13 @@ impl Engine {
             Change::MinGap(gap) => settings.min_gap = gap,
             Change::Cooldown(cooldown) => settings.cooldown = cooldown,
             Change::KeepHistory(keep) => self.recording = keep,
-            Change::Defaults => *settings = Settings::default(),
+            Change::ResetLimits => settings.thresholds = Settings::default().thresholds,
+            Change::ResetNudges => {
+                let defaults = Settings::default();
+                settings.grace = defaults.grace;
+                settings.min_gap = defaults.min_gap;
+                settings.cooldown = defaults.cooldown;
+            }
         }
         if let Some(tracker) = &mut self.tracker {
             tracker.set_settings(self.settings);

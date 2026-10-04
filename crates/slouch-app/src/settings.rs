@@ -62,23 +62,13 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
             h1 { "Settings" }
 
             section {
-                h2 { "Camera" }
-                select {
-                    onchange: move |event| choose_camera(event.value()),
-                    option { value: "", selected: chosen.camera.is_none(), "First camera that works" }
-                    for camera in cameras {
-                        option {
-                            value: "{camera.id}",
-                            selected: chosen.camera.as_deref() == Some(camera.id.as_str()),
-                            "{camera.name} ({camera.id})"
-                        }
-                    }
+                SectionHeading {
+                    title: "Slouch limits",
+                    onreset: move |_| {
+                        thresholds.set(Thresholds::default());
+                        send.call(Change::ResetLimits);
+                    },
                 }
-                p { class: "hint", "Switching camera recalibrates, so sit up nicely for a moment." }
-            }
-
-            section {
-                h2 { "Slouch limits" }
                 Slider {
                     label: "Eyes drop by",
                     shown: format!("{:.2} face heights", limits.drop),
@@ -91,13 +81,26 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     min: 0.05, max: 0.6, step: 0.01, value: limits.lean as f64,
                     onchange: move |v: f64| { thresholds.with_mut(|t| t.lean = v as f32); send.call(Change::Lean(v as f32)) },
                 }
-                p { class: "hint", "The calibration game sets both from how you actually sit." }
+                p { class: "hint",
+                    "The calibration game, in the tray menu and the camera window, sets both from how you actually sit."
+                }
             }
 
             section {
-                h2 { "Nagging" }
+                SectionHeading {
+                    title: "Nudges",
+                    onreset: move |_| {
+                        preferences.with_mut(|p| {
+                            let defaults = Preferences::default();
+                            p.grace = defaults.grace;
+                            p.min_gap = defaults.min_gap;
+                            p.cooldown = defaults.cooldown;
+                        });
+                        send.call(Change::ResetNudges);
+                    },
+                }
                 Slider {
-                    label: "Nag after slouching for",
+                    label: "Nudge after slouching for",
                     shown: format!("{:.1} s", chosen.grace),
                     min: 0.5, max: 10.0, step: 0.5, value: chosen.grace,
                     onchange: move |v| { preferences.with_mut(|p| p.grace = v); send.call(Change::Grace(v)) },
@@ -115,6 +118,22 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     onchange: move |v| { preferences.with_mut(|p| p.cooldown = v); send.call(Change::Cooldown(v)) },
                 }
                 p { class: "hint", "Gentle by default. Raise these if it feels naggy." }
+            }
+
+            section {
+                h2 { "Camera" }
+                select {
+                    onchange: move |event| choose_camera(event.value()),
+                    option { value: "", selected: chosen.camera.is_none(), "First camera that works" }
+                    for camera in cameras {
+                        option {
+                            value: "{camera.id}",
+                            selected: chosen.camera.as_deref() == Some(camera.id.as_str()),
+                            "{camera.name} ({camera.id})"
+                        }
+                    }
+                }
+                p { class: "hint", "Switching camera recalibrates, so sit up nicely for a moment." }
             }
 
             section {
@@ -147,23 +166,17 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     if cleared() { "History cleared" } else { "Clear history" }
                 }
             }
+        }
+    }
+}
 
-            div { class: "buttons",
-                button {
-                    class: "button",
-                    onclick: move |_| {
-                        let defaults = Preferences {
-                            camera: preferences().camera,
-                            keep_history: preferences().keep_history,
-                            ..Preferences::default()
-                        };
-                        preferences.set(defaults);
-                        thresholds.set(Thresholds::default());
-                        send.call(Change::Defaults);
-                    },
-                    "Restore defaults"
-                }
-            }
+/// A section's title, with a button putting just that section back to its defaults.
+#[component]
+fn SectionHeading(title: &'static str, onreset: EventHandler<MouseEvent>) -> Element {
+    rsx! {
+        div { class: "section-heading",
+            h2 { "{title}" }
+            button { class: "text-button", onclick: move |event| onreset.call(event), "Reset" }
         }
     }
 }

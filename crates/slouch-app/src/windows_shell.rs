@@ -10,7 +10,7 @@ use crate::config::APP_NAME;
 
 /// Who toasts come from. Windows names and badges a toast by its sender's id, which an
 /// unpackaged app registers for the current user.
-const TOAST_SENDER: &str = "com.jamedjo.slouchup";
+const TOAST_SENDER: &str = "dev.weareframes.slouchup";
 
 /// The toast sender, registered once with the app's name and icon, or `None` if that failed
 /// and toasts should come from Windows' default sender instead.

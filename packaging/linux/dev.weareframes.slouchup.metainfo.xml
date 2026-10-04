@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.weareframes.slouchup</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>SlouchUp</name>
+  <summary>Nudges you when you start to slouch</summary>
+  <description>
+    <p>
+      SlouchUp watches your webcam and nudges you the moment you start slouching, so the habit
+      gets caught while it's forming rather than at the end of the day.
+    </p>
+    <p>
+      It finds your face, notes where your eyes sit and how big your face looks when you're
+      sitting well, then nags when your eyes sink or your face grows as you lean towards the
+      screen. Everything runs on your computer; no frame leaves it.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.weareframes.slouchup.desktop</launchable>
+  <icon type="stock">dev.weareframes.slouchup</icon>
+  <developer id="dev.weareframes">
+    <name>James Edwards-Jones</name>
+  </developer>
+  <url type="homepage">https://slouchup.com</url>
+  <url type="bugtracker">https://github.com/Jamedjo/slouchup/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Leaning towards the screen, with the nudge</caption>
+      <image>https://raw.githubusercontent.com/Jamedjo/slouchup/main/docs/screenshots/leaning.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The settings window</caption>
+      <image>https://raw.githubusercontent.com/Jamedjo/slouchup/main/docs/screenshots/settings.png</image>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>slouchup</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

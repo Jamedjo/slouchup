@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=slouchup
+Name=SlouchUp
 Comment=Nudges you when you start to slouch
 Exec=slouchup
-Icon=slouchup
+Icon=dev.weareframes.slouchup
 Categories=Utility;
+Keywords=posture;slouch;webcam;
+StartupWMClass=slouchup

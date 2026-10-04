@@ -139,15 +139,27 @@ fn base(files: &Files, icon: &Path, summary: &str, body: &str, timeout_ms: u32) 
     notification
 }
 
-/// Says the app carries on in the tray once its window closes, with a button to quit it instead.
+/// Says the app carries on in the tray once its window closes.
 pub fn still_running(files: &Files) {
-    let mut notification = base(
+    in_tray(
         files,
-        &files.icon,
         &format!("{APP_NAME} is still running"),
         "It's in your tray, keeping an eye on your posture.",
-        8000,
     );
+}
+
+/// Says the app waits in the tray with the camera off, and how to turn it on.
+pub fn camera_off(files: &Files) {
+    in_tray(
+        files,
+        &format!("{APP_NAME} is in your tray"),
+        "The camera's off. Choose Resume from its menu when you're ready.",
+    );
+}
+
+/// A notice that the app is in the tray, with a button to quit it instead.
+fn in_tray(files: &Files, summary: &str, body: &str) {
+    let mut notification = base(files, &files.icon, summary, body, 8000);
     notification.action(QUIT, "Quit");
     match notification.show() {
         // Waits until the notification is answered or dismissed.

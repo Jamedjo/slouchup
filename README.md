@@ -42,6 +42,11 @@ in a small window with Keep watching and Quit buttons, and in a notification.
 
 <img src="docs/screenshots/still-running.png" alt="The window and notification saying slouchup is still running, each with a way to quit" width="520">
 
+When the camera is off, after Not now on the welcome or while paused, a notification says so
+instead, with Resume in the tray menu to turn it on.
+
+<img src="docs/screenshots/camera-off.png" alt="The notification saying slouchup is in the tray with the camera off" width="400">
+
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 
 ### History

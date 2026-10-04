@@ -73,6 +73,10 @@ impl Notifier {
         notification.hint(notify_rust::Hint::DesktopEntry(
             crate::config::APP_ID.into(),
         ));
+        #[cfg(windows)]
+        if let Some(sender) = crate::windows_shell::toast_sender(&self.files.icon) {
+            notification.app_id(sender);
+        }
         notification
     }
 

@@ -1,0 +1,17 @@
+---
+import { eyes, type Mood } from "../brand/eyes";
+
+interface Props {
+  mood: Mood;
+  size: number;
+}
+
+const { mood, size } = Astro.props;
+---
+
+<span class="eyes" style={`width: ${size}px; height: ${size}px`} set:html={eyes(mood)} />
+
+<style>
+  .eyes { display: inline-flex; flex: none; }
+  .eyes :global(svg) { width: 100%; height: 100%; }
+</style>

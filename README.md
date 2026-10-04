@@ -83,3 +83,8 @@ To refresh the screenshots, run `scripts/screenshots.sh`; it uses a headless swa
 doesn't touch your desktop.
 
 The first version was a Python experiment, kept on the `python` branch.
+
+The website in `www/` is an [Astro](https://astro.build) site, published to GitHub Pages from
+`main`. Run `npm install` and `npm run dev` there to work on it.
+
+<img src="docs/screenshots/homepage.png" alt="The homepage" width="640">

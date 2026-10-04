@@ -1,0 +1,17 @@
+---
+import { upTile, type Tile } from "../brand/up";
+
+interface Props {
+  tile: Tile;
+  size: number;
+}
+
+const { tile, size } = Astro.props;
+---
+
+<span class="tile" style={`width: ${size}px; height: ${size}px`} set:html={upTile(tile)} />
+
+<style>
+  .tile { display: inline-flex; flex: none; }
+  .tile :global(svg) { width: 100%; height: 100%; }
+</style>

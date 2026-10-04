@@ -1,0 +1,37 @@
+---
+import Band from "./Band.astro";
+import Eyes from "./Eyes.astro";
+import type { Mood } from "../brand/eyes";
+
+const states: { mood: Mood; label: string }[] = [
+  { mood: "upright", label: "Sitting tall" },
+  { mood: "slouch", label: "Sinking" },
+  { mood: "lost", label: "Can't see you" },
+];
+---
+
+<Band ground="ink" strip>
+  <div class="strip">
+    <p>Lives in your tray.<br />Its eyes tell you how you're doing.</p>
+    <ul>
+      {
+        states.map(({ mood, label }) => (
+          <li class={mood}>
+            <Eyes mood={mood} size={40} />
+            {label}
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</Band>
+
+<style>
+  .strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px 48px; }
+  p { flex: 1 1 260px; margin: 0; font: 600 1.75rem/1.2 var(--font-display); }
+  ul { display: flex; flex-wrap: wrap; gap: 32px; margin: 0; padding: 0; list-style: none; }
+  li { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+  .upright :global(.eyes) { color: var(--state-upright); }
+  .slouch :global(.eyes) { color: var(--state-slouch); }
+  .lost :global(.eyes) { color: var(--state-lost); }
+</style>

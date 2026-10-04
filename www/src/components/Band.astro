@@ -1,0 +1,20 @@
+---
+// A full-width section. Neighbouring bands never share a ground: paper, ink, paper, butter, paper, ink.
+interface Props {
+  ground?: "paper" | "butter" | "ink";
+  strip?: boolean;
+  id?: string;
+}
+
+const { ground = "paper", strip = false, id } = Astro.props;
+---
+
+<section id={id} class:list={["band", ground, { strip }]} data-theme={ground === "ink" ? "night" : "day"}>
+  <div class="container"><slot /></div>
+</section>
+
+<style>
+  .band { padding: 96px 0; background: var(--surface); color: var(--text); }
+  .butter { background: var(--butter); border-block: 2px solid var(--ink); }
+  .strip { padding: 40px 0; }
+</style>

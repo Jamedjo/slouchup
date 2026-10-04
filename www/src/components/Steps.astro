@@ -1,0 +1,37 @@
+---
+import Band from "./Band.astro";
+import Eyes from "./Eyes.astro";
+import StepCard from "./StepCard.astro";
+import UpTile from "./UpTile.astro";
+---
+
+<Band id="how">
+  <div class="steps">
+    <h2 class="h2">Three steps, then forget it's there</h2>
+    <div class="cards">
+      <StepCard ground="butter" label="1 · Look here" title="Calibrate each screen">
+        <svg slot="picture" viewBox="0 0 200 96" width="120" height="57" aria-hidden="true">
+          <circle cx="52" cy="48" r="44" fill="#22201C" />
+          <circle cx="148" cy="48" r="44" fill="#22201C" />
+          <circle cx="52" cy="30" r="17" fill="#FFF1C9" />
+          <circle cx="148" cy="30" r="17" fill="#FFF1C9" />
+        </svg>
+        Big friendly eyes appear on every screen in turn. Sit up straight and look at them for a few seconds.
+      </StepCard>
+      <StepCard ground="white" label="2 · Get on with your day" title="It watches quietly">
+        <Eyes slot="picture" mood="upright" size={58} />
+        slouchup compares how far your eyes drop and how much bigger your face gets against how you sat
+        when you calibrated.
+      </StepCard>
+      <StepCard ground="ink" label="3 · Psst" title="One nudge when you sink">
+        <UpTile slot="picture" tile="nudge" size={58} />
+        A single nudge says exactly what changed. Sit up and it disappears.
+      </StepCard>
+    </div>
+  </div>
+</Band>
+
+<style>
+  .steps { display: flex; flex-direction: column; gap: 40px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+</style>

@@ -1,0 +1,20 @@
+---
+interface Props {
+  size: string;
+}
+
+const { size } = Astro.props;
+---
+
+<span class="wordmark" style={`font-size: ${size}`}>slouch<span class="up">up</span></span>
+
+<style>
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    padding-top: var(--rise-up);
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1;
+  }
+</style>

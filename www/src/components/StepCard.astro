@@ -1,0 +1,28 @@
+---
+interface Props {
+  ground: "butter" | "white" | "ink";
+  label: string;
+  title: string;
+}
+
+const { ground, label, title } = Astro.props;
+---
+
+<article class={ground} data-theme={ground === "ink" ? "night" : "day"}>
+  <slot name="picture" />
+  <span class="label">{label}</span>
+  <h3>{title}</h3>
+  <p><slot /></p>
+</article>
+
+<style>
+  article { display: flex; flex-direction: column; gap: 16px; padding: 28px; border: 2px solid var(--ink); border-radius: var(--radius-md); }
+  .white { background: var(--white); color: var(--ink); }
+  .butter { background: var(--butter); color: var(--ink); }
+  .ink { background: var(--ink); color: var(--butter); }
+  .label { font: 600 1.1rem var(--font-display); color: var(--tomato-text); }
+  .ink .label { color: var(--tomato-soft); }
+  h3 { margin: 0; font: 600 1.6rem/1.15 var(--font-display); }
+  p { margin: 0; font-size: 1.05rem; line-height: 1.5; }
+  .ink p { color: var(--sand); }
+</style>

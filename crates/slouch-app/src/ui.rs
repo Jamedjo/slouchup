@@ -24,7 +24,7 @@ use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
 use crate::notifier;
 use crate::onboarding::Onboarding;
 use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
-use crate::{screens, style};
+use crate::{screens, still_running, style};
 
 /// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
 /// painted before the page loads, so it doesn't flash white.
@@ -275,7 +275,8 @@ pub fn App() -> Element {
         }
     });
 
-    // Closing the camera window only hides it, so the first close says where the app went.
+    // Closing the camera window only hides it, so the first close says where the app went: in a
+    // window that can quit it, and in a notification.
     let point_to_tray = use_hook({
         let files = bridge.files.clone();
         let told = std::rc::Rc::new(std::cell::Cell::new(false));
@@ -289,6 +290,7 @@ pub fn App() -> Element {
     });
     use_wry_event_handler({
         let main = window().id();
+        let asked = std::rc::Rc::new(std::cell::Cell::new(false));
         move |event, _| {
             if let Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -297,6 +299,9 @@ pub fn App() -> Element {
             } = event
                 && *window_id == main
             {
+                if !asked.replace(true) {
+                    still_running::open();
+                }
                 point_to_tray();
             }
         }

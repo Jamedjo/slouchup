@@ -19,10 +19,12 @@ pub enum Mood {
     Good,
     Bad,
     Idle,
+    Paused,
 }
 
 impl Mood {
-    /// Good looks up, bad drops its lids and sinks, idle closes its eyes and wonders.
+    /// Good looks up, bad drops its lids and sinks, idle closes its eyes and wonders, and paused
+    /// closes them and sleeps.
     fn eyes(self, colour: &str) -> String {
         let shapes = match self {
             Mood::Good => format!(
@@ -41,6 +43,9 @@ impl Mood {
 <path d="M17.4 3.6a1.7 1.7 0 1 1 2.4 1.6c-.5.3-.8.6-.8 1.2"/>
 <circle cx="19" cy="8.6" r="0.6" fill="{colour}" stroke="none"/>"#
             ),
+            Mood::Paused => r#"<path d="M3 13c1.6 2.2 7.4 2.2 9 0M12 13c1.6 2.2 7.4 2.2 9 0"/>
+<path d="M16.6 3.6h3.4l-3.4 4.4h3.4"/>"#
+                .to_string(),
         };
         format!(
             r#"<g fill="none" stroke="{colour}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">{shapes}</g>"#
@@ -77,10 +82,10 @@ impl Theme {
         match (self, mood) {
             (Theme::Day, Mood::Good) => INK,
             (Theme::Day, Mood::Bad) => "#C8432A",
-            (Theme::Day, Mood::Idle) => "#77726A",
+            (Theme::Day, Mood::Idle | Mood::Paused) => "#77726A",
             (Theme::Night, Mood::Good) => BUTTER,
             (Theme::Night, Mood::Bad) => "#FF8A6B",
-            (Theme::Night, Mood::Idle) => "#A39E93",
+            (Theme::Night, Mood::Idle | Mood::Paused) => "#A39E93",
         }
     }
 }

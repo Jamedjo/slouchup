@@ -317,7 +317,7 @@ impl Engine {
                 self.handle(command, &mut announce);
             }
             if self.paused {
-                self.set_status(Mood::Idle, "Paused");
+                self.set_status(Mood::Paused, "Paused");
                 self.publish();
                 std::thread::sleep(WATCH_INTERVAL);
                 continue;

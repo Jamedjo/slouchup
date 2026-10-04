@@ -207,3 +207,12 @@ html, body {
 .slider-label { font-weight: 600; }
 .slider-value { color: var(--state-slouch); font-weight: 600; font-variant-numeric: tabular-nums; }
 .slider input { grid-column: 1 / -1; width: 100%; min-height: 28px; margin: 0; accent-color: var(--tomato); }
+
+/* First run: the camera window's welcome, in the settings window's day look */
+
+.onboarding h1 { padding-top: var(--rise-up); }
+.onboarding .lede { margin: 0; font-size: 17px; }
+.tray-moods { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+.tray-mood { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 14px; font-weight: 600; }
+.tray-mood .eyes { width: 24px; height: 24px; }
+.onboarding .buttons { margin-top: var(--space-2); }

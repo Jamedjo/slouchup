@@ -18,8 +18,9 @@ use futures_util::StreamExt;
 
 use crate::art::{self, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
-use crate::config::APP_NAME;
+use crate::config::{self, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
+use crate::onboarding::Onboarding;
 use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
 use crate::{screens, style};
 
@@ -47,6 +48,8 @@ pub struct Bridge {
     /// Whether settings and calibration are saved; demos leave them alone.
     pub persist: bool,
     pub start_with_settings: bool,
+    /// The first run, which waits for the welcome to turn the camera on.
+    pub onboarding: bool,
 }
 
 impl Bridge {
@@ -76,6 +79,10 @@ fn tray_icon(mood: Mood, theme: Theme) -> Icon {
         .expect("icon is 64x64")
 }
 
+fn pause_label(paused: bool) -> &'static str {
+    if paused { "Resume" } else { "Pause" }
+}
+
 fn snooze_label(snoozed: bool) -> String {
     if snoozed {
         "Stop snoozing".into()
@@ -85,7 +92,7 @@ fn snooze_label(snoozed: bool) -> String {
 }
 
 impl Tray {
-    fn new(theme: Theme) -> Self {
+    fn new(theme: Theme, paused: bool) -> Self {
         let shown = Shown {
             mood: Mood::Idle,
             theme,
@@ -93,7 +100,7 @@ impl Tray {
             snoozed: false,
         };
         let status = MenuItem::with_id("status", &shown.status, false, None);
-        let pause = MenuItem::with_id("pause", "Pause", true, None);
+        let pause = MenuItem::with_id("pause", pause_label(paused), true, None);
         let snooze = MenuItem::with_id("snooze", snooze_label(false), true, None);
         let menu = Menu::new();
         menu.append_items(&[
@@ -173,7 +180,7 @@ fn show_main_window() {
 pub fn App() -> Element {
     let bridge = use_context::<Bridge>();
     let mut view = use_signal(View::default);
-    let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme())));
+    let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme(), bridge.onboarding)));
     use_future({
         let tray = tray.clone();
         move || {
@@ -186,7 +193,8 @@ pub fn App() -> Element {
             }
         }
     });
-    let mut paused = use_signal(|| false);
+    let mut paused = use_signal(|| bridge.onboarding);
+    let mut onboarding = use_signal(|| bridge.onboarding);
     let monitors = use_signal(Vec::<MonitorHandle>::new);
     let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));
     // The game's full-screen window: which screen it's for, and the window once it has opened.
@@ -264,6 +272,28 @@ pub fn App() -> Element {
         }
     });
 
+    let start_watching = {
+        let bridge = bridge.clone();
+        let tray = tray.clone();
+        let mut start_game = start_game.clone();
+        move |camera: Option<String>| {
+            if bridge.persist {
+                let mut preferences = config::load_preferences();
+                preferences.camera = camera.clone();
+                if let Err(error) = config::save_preferences(&preferences) {
+                    tracing::warn!("couldn't save the camera choice: {error}");
+                }
+            }
+            bridge.send(Command::UseCamera(camera));
+            bridge.send(Command::Pause(false));
+            paused.set(false);
+            tray.pause.set_text(pause_label(false));
+            onboarding.set(false);
+            start_game();
+        }
+    };
+    let not_now = move |()| window().set_visible(false);
+
     let on_menu = use_hook({
         let bridge = bridge.clone();
         let tray = tray.clone();
@@ -278,9 +308,12 @@ pub fn App() -> Element {
                 "pause" => {
                     let now_paused = !paused();
                     paused.set(now_paused);
-                    tray.pause
-                        .set_text(if now_paused { "Resume" } else { "Pause" });
+                    tray.pause.set_text(pause_label(now_paused));
                     bridge.send(Command::Pause(now_paused));
+                    // Resuming turns the camera on, which is all the welcome was waiting for.
+                    if !now_paused {
+                        onboarding.set(false);
+                    }
                 }
                 "snooze" => bridge.send(Command::Snooze(!view.peek().snoozed)),
                 "quit" => std::process::exit(0),
@@ -368,6 +401,15 @@ pub fn App() -> Element {
         }
     });
 
+    if onboarding() {
+        let chosen = bridge
+            .persist
+            .then(|| config::load_preferences().camera)
+            .flatten();
+        return rsx! {
+            Onboarding { chosen, on_start: start_watching, on_later: not_now }
+        };
+    }
     let preview = bridge.preview.clone();
     let current = view.read().clone();
     let (frame_width, frame_height) = current.frame_size;
@@ -410,7 +452,7 @@ pub fn App() -> Element {
 
 /// The tray's eyes, inline, in the colour of the text around them.
 #[component]
-fn Eyes(mood: Mood) -> Element {
+pub fn Eyes(mood: Mood) -> Element {
     rsx! {
         span { class: "eyes", dangerous_inner_html: art::eyes_markup(mood) }
     }

@@ -23,13 +23,17 @@ current status and has:
 - **Show camera** — your camera with the baseline and slouch lines, and how close each measure is
   to its limit.
 - **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
-  your screens, slouching, and leaning in, then set the limits halfway between. It runs by itself
-  the first time slouchup starts.
+  your screens, slouching, and leaning in, then set the limits halfway between.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
 - **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
 - **Snooze for 30 minutes** — no nudges for a while, though it keeps watching. The nudge itself
   has a Snooze button too.
 - **Pause** and **Quit**.
+
+The first time it starts, a welcome asks before turning the camera on, lets you pick which camera,
+and shows the eyes to look for in the tray. Turning the camera on starts the calibration game.
+
+<img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 

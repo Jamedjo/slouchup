@@ -27,8 +27,8 @@ current status and has:
   the first time slouchup starts.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
 - **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
-- **Snooze for 30 minutes** — no nudges for a while, though it keeps watching. On Linux the nudge
-  itself has a Snooze button too.
+- **Snooze for 30 minutes** — no nudges for a while, though it keeps watching. On Linux and macOS
+  the nudge itself has a Snooze button too.
 - **Pause** and **Quit**.
 
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">

@@ -1,0 +1,4 @@
+# Windows builds carry the C runtime inside the exe, so slouchup starts on a Windows install that
+# has no Visual C++ redistributable.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -7,7 +7,11 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-    paths: [packaging/**, crates/slouch-app/examples/icon.rs, .github/workflows/release.yml]
+    paths:
+      - packaging/**
+      - crates/slouch-app/examples/icon.rs
+      - crates/slouch-app/src/icon_file.rs
+      - .github/workflows/release.yml
   workflow_dispatch:
 
 env:
@@ -24,16 +28,20 @@ jobs:
           - name: Linux
             os: ubuntu-22.04
             package: packaging/linux/appimage.sh
-            file: slouchup-linux.AppImage
+            files: target/release/slouchup-linux.AppImage
           - name: Mac
             os: macos-latest
             targets: aarch64-apple-darwin,x86_64-apple-darwin
             package: packaging/macos/bundle.sh
-            file: slouchup-mac.dmg
+            files: target/release/slouchup-mac.dmg
           - name: Windows
             os: windows-latest
-            package: pwsh -File packaging/windows/zip.ps1
-            file: slouchup-windows.zip
+            package: pwsh -File packaging/windows/setup.ps1
+            # The installer, and what installed copies update from.
+            files: |
+              target/release/velopack/slouchup-setup.exe
+              target/release/velopack/*.nupkg
+              target/release/velopack/releases.win.json
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -61,14 +69,28 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-dotnet@v5
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: 8.0.x
+
+      # vpk builds the Windows installer, at the version of the velopack crate the app uses.
+      - name: Install vpk
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = ((cargo pkgid velopack) -split "[#@]")[-1]
+          dotnet tool install --global vpk --version $version
+          "$HOME\.dotnet\tools" >> $env:GITHUB_PATH
+
       - name: Package
         shell: bash
         run: ${{ matrix.package }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.file }}
-          path: target/release/${{ matrix.file }}
+          name: ${{ matrix.name }}
+          path: ${{ matrix.files }}
           if-no-files-found: error
 
   publish:

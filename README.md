@@ -95,7 +95,10 @@ Every push to `main` packages it for each platform, and a `v*` tag publishes the
 - Linux: `slouchup-linux.AppImage`, from `packaging/linux/appimage.sh`
 - Mac: `slouchup-mac.dmg`, holding `slouchup.app` for Apple silicon and Intel, from
   `packaging/macos/bundle.sh`. macOS only grants camera access to an app bundle.
-- Windows: `slouchup-windows.zip`, holding `slouchup.exe`, from `packaging/windows/zip.ps1`
+- Windows: `slouchup-setup.exe`, from `packaging/windows/setup.ps1` with
+  [Velopack](https://velopack.io). It installs for you alone, without questions or an
+  administrator, into `%LOCALAPPDATA%\slouchup`, and adds SlouchUp to the Start menu and to
+  Apps & features. Uninstalling keeps your settings, so a reinstall picks them up.
 
 The packages aren't signed, so macOS and Windows warn before opening them the first time.
 

@@ -22,15 +22,16 @@ const node = (type: string, style: Style, children?: Node["props"]["children"]):
   props: { style, children },
 });
 
-const display = (size: number): Style => ({ fontFamily: "Fredoka", fontWeight: 600, fontSize: size, lineHeight: 1.05 });
+const display = (size: number): Style => ({ fontFamily: "Figtree", fontWeight: 800, fontSize: size, lineHeight: 1.05, letterSpacing: -0.025 * size });
+const wordmarkFace = (size: number): Style => ({ fontFamily: "Fredoka", fontWeight: 600, fontSize: size, lineHeight: 1.05 });
 
-/** "up" raised and coloured as the wordmark has it. */
+/** "up" raised and coloured as the wordmark has it, in the wordmark's face. */
 function up(colour: string, size: number): Node {
-  return node("span", { position: "relative", top: -0.25 * size, color: colour }, "up");
+  return node("span", { position: "relative", top: -0.25 * size, color: colour, ...wordmarkFace(size) }, "up");
 }
 
 function wordmark(): Node {
-  return node("div", { display: "flex", alignItems: "baseline", color: INK, ...display(48) }, ["slouch", up(TOMATO, 48)]);
+  return node("div", { display: "flex", alignItems: "baseline", color: INK, ...wordmarkFace(48) }, ["slouch", up(TOMATO, 48)]);
 }
 
 function tile(size: number): Node {

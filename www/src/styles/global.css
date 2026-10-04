@@ -14,11 +14,19 @@ body {
   padding: 0 24px;
 }
 
-/* The rising "up": once per surface, with room above it so it isn't clipped. */
-.up { position: relative; top: calc(var(--rise-up) * -1); color: var(--up); }
+/* The rising "up": once per surface, with room above it so it isn't clipped. It keeps the
+   wordmark's face inside headers. */
+.up {
+  position: relative;
+  top: calc(var(--rise-up) * -1);
+  color: var(--up);
+  font-family: var(--font-wordmark);
+  font-weight: 600;
+  letter-spacing: 0;
+}
 
-.display { margin: 0; padding-top: var(--rise-up); font: 600 clamp(3rem, 7vw, 5.75rem)/0.98 var(--font-display); }
-.h2 { margin: 0; font: 600 clamp(2.25rem, 4.5vw, 3.5rem)/1 var(--font-display); }
+.display { margin: 0; padding-top: var(--rise-up); font: var(--weight-display) clamp(3rem, 7vw, 5.75rem)/0.98 var(--font-display); letter-spacing: -0.03em; }
+.h2 { margin: 0; font: var(--weight-display) clamp(2.25rem, 4.5vw, 3.5rem)/1 var(--font-display); letter-spacing: -0.025em; }
 .lede { margin: 0; max-width: 34rem; font-size: 1.25rem; line-height: 1.5; }
 .eyebrow { font: 600 13px/1.3 var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; }
 

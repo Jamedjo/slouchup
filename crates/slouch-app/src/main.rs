@@ -10,7 +10,7 @@ mod finder;
 mod frames;
 mod history;
 mod history_window;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod installed;
 mod notifier;
 mod onboarding;
@@ -39,7 +39,7 @@ static QUIT: std::sync::OnceLock<crossbeam_channel::Sender<Command>> = std::sync
 /// End the app from anywhere: the engine saves the history and exits, and if it's stuck or
 /// gone, the app exits anyway shortly after.
 pub fn quit() {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     installed::update_on_quit();
     if let Some(commands) = QUIT.get() {
         let _ = commands.send(Command::Quit);
@@ -51,7 +51,7 @@ pub fn quit() {
 }
 
 fn main() {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     installed::run_installer_step();
     let args = config::parse_args();
     let cache = cache_dir();
@@ -73,7 +73,7 @@ fn main() {
         }
     };
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     if !args.demo {
         installed::keep_up_to_date();
     }

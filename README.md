@@ -92,7 +92,9 @@ SlouchUp runs on Linux, macOS and Windows, and CI builds and tests it on all thr
 Every push to `main` packages it for each platform, and a `v*` tag publishes the packages as a
 [release](https://github.com/Jamedjo/slouchup/releases):
 
-- Linux: `slouchup-linux.AppImage`, from `packaging/linux/appimage.sh`
+- Linux: `slouchup-x86_64.AppImage`, from `packaging/linux/appimage.sh` with Velopack. It looks
+  for a newer release every few hours, downloads it in the background, and replaces itself with it
+  when you quit, or else the next time it starts.
 - Mac: `slouchup-mac.dmg`, holding `SlouchUp.app` for Apple silicon and Intel, from
   `packaging/macos/bundle.sh`. macOS only grants camera access to an app bundle.
 - Windows: `slouchup-setup.exe`, from `packaging/windows/setup.ps1` with

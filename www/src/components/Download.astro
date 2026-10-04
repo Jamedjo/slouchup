@@ -10,7 +10,7 @@ const latest = `${repository}/releases/latest/download`;
 const platforms = [
   { id: "windows", name: "Windows", href: `${latest}/slouchup-setup.exe` },
   { id: "mac", name: "Mac", href: `${latest}/slouchup-mac.dmg` },
-  { id: "linux", name: "Linux", href: `${latest}/slouchup-linux.AppImage` },
+  { id: "linux", name: "Linux", href: `${latest}/slouchup-x86_64.AppImage` },
 ];
 const others = (id: string) => platforms.filter((platform) => platform.id !== id);
 ---

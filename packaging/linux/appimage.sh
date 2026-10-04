@@ -1,6 +1,7 @@
 #!/bin/sh
-# Builds target/release/slouchup-linux.AppImage. Needs linuxdeploy with its gtk and appimage
-# plugins on PATH, and the webkit2gtk-4.1 development files. Run from the repository root.
+# Builds target/release/velopack/slouchup-x86_64.AppImage, beside the packages a release needs for
+# updates. Needs linuxdeploy with its gtk plugin, and vpk at the velopack crate's version with
+# mksquashfs, on PATH, and the webkit2gtk-4.1 development files. Run from the repository root.
 set -e
 export APPIMAGE_EXTRACT_AND_RUN=1
 id=dev.weareframes.slouchup
@@ -29,6 +30,31 @@ linuxdeploy --appdir "$appdir" \
     --plugin gtk
 sed -i "s|$webkit|././$inside|g" "$appdir"/usr/lib/libwebkit2gtk-4.1.so*
 
-pkgid=$(cargo pkgid -p slouchup)
-LINUXDEPLOY_OUTPUT_VERSION=${pkgid##*[#@]} OUTPUT=target/release/slouchup-linux.AppImage \
-    linuxdeploy-plugin-appimage --appdir "$appdir"
+version=$(cargo pkgid -p slouchup | sed 's/.*[#@]//')
+echo "X-AppImage-Version=$version" >> "$appdir/$id.desktop"
+
+# The latest release's package, so vpk can make a delta from it, which AppImages download instead
+# of the whole app. It's left out when it isn't older, as for builds of main before the version is
+# raised, since vpk refuses to pack a version that isn't newer than the ones beside it.
+out=target/release/velopack
+rm -rf "$out"
+vpk download github --repoUrl https://github.com/Jamedjo/slouchup --channel linux \
+    --outputDir "$out" ${GITHUB_TOKEN:+--token "$GITHUB_TOKEN"}
+older=
+for package in "$out"/*.nupkg; do
+    [ -e "$package" ] || continue
+    released=$(basename "$package" | sed 's/^slouchup-\(.*\)-linux-full\.nupkg$/\1/')
+    if [ "$released" != "$version" ] &&
+        [ "$(printf '%s\n' "$released" "$version" | sort -V | head -1)" = "$released" ]; then
+        older="$older $package"
+    else
+        rm "$package"
+    fi
+done
+
+# vpk keeps the AppDir as it is, adding its updater beside the app.
+vpk pack --packId slouchup --packVersion "$version" --packDir "$appdir" --mainExe slouchup \
+    --channel linux --packTitle SlouchUp --packAuthors "We Are Frames" --outputDir "$out"
+mv "$out/slouchup.AppImage" "$out/slouchup-x86_64.AppImage"
+# Already on the release it came from.
+[ -z "$older" ] || rm $older

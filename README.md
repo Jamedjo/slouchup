@@ -96,3 +96,7 @@ The website in `www/` is an [Astro](https://astro.build) site, published from `m
 at [slouchup.com](https://slouchup.com). Run `npm install` and `npm run dev` there to work on it.
 
 <img src="docs/screenshots/homepage.png" alt="The homepage" width="640">
+
+Links to it unfurl with this card, drawn at build time by `www/src/brand/card.ts`:
+
+<img src="docs/screenshots/og.png" alt="The link card" width="480">

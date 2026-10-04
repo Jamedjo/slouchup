@@ -14,6 +14,8 @@ mod settings;
 mod source;
 mod style;
 mod ui;
+#[cfg(windows)]
+mod windows_shell;
 
 use std::sync::{Arc, Mutex};
 

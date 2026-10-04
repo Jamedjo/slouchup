@@ -22,3 +22,6 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1"
 yunet = { version = "0.1.0", path = "../yunet" }
+
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"

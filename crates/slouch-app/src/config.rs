@@ -13,6 +13,9 @@ const OLD_ID: &str = "slouch";
 pub const APP_NAME: &str = "SlouchUp";
 /// Windows names app folders by publisher, then app.
 const PUBLISHER: &str = "We Are Frames";
+/// Names the Linux desktop file, its icon and its AppStream metadata.
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const DESKTOP_ID: &str = "dev.weareframes.slouchup";
 
 /// Per-user cache directory. Never a shared temporary one, where other users could plant files.
 pub fn cache_dir() -> PathBuf {

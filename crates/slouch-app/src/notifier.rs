@@ -128,7 +128,7 @@ fn base(files: &Files, icon: &Path, summary: &str, body: &str, timeout_ms: u32) 
         .timeout(Timeout::Milliseconds(timeout_ms));
     #[cfg(all(unix, not(target_os = "macos")))]
     notification.hint(notify_rust::Hint::DesktopEntry(
-        crate::config::APP_ID.into(),
+        crate::config::DESKTOP_ID.into(),
     ));
     #[cfg(windows)]
     if let Some(sender) = crate::windows_shell::toast_sender(&files.icon) {

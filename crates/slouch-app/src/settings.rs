@@ -42,6 +42,7 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
         min_gap: initial.min_gap,
         cooldown: initial.cooldown,
         keep_history: !handle.bridge.persist || config::load_preferences().keep_history,
+        ..Preferences::default()
     });
     let mut cleared = use_signal(|| false);
     let mut thresholds = use_signal(|| initial.thresholds);

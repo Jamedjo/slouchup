@@ -14,7 +14,7 @@ use crate::camera_view::FrameSlot;
 use crate::config::{self, APP_NAME};
 use crate::finder::FaceFinder;
 use crate::frames;
-use crate::notifier::Notifier;
+use crate::notifier::{Notifier, OnSnooze};
 use crate::source::{Capture, Source};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
@@ -31,6 +31,8 @@ const RETRY_CAMERA: Duration = Duration::from_secs(5);
 /// Laptop lids tilt rarely, so the background needn't be checked every frame.
 const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
 const CANT_SEE_YOU: &str = "I can't see you right now.";
+/// How long Snooze holds back nudges, while watching carries on.
+pub const SNOOZE: Duration = Duration::from_secs(30 * 60);
 
 pub enum Command {
     Recalibrate,
@@ -38,6 +40,8 @@ pub enum Command {
         screens: Vec<String>,
     },
     Pause(bool),
+    /// Hold back nudges for [`SNOOZE`], or let them through again.
+    Snooze(bool),
     Change(Change),
     /// Switch camera, by device id or `None` for the first that works.
     UseCamera(Option<String>),
@@ -67,6 +71,7 @@ pub struct View {
     pub banner: Option<Banner>,
     /// What the calibration game is asking for right now.
     pub look_at: Option<LookAt>,
+    pub snoozed: bool,
 }
 
 impl Default for View {
@@ -80,6 +85,7 @@ impl Default for View {
             lines: None,
             banner: None,
             look_at: None,
+            snoozed: false,
         }
     }
 }
@@ -172,6 +178,7 @@ pub struct Engine {
     started: Instant,
     results_until: Option<Instant>,
     paused: bool,
+    snoozed_until: Option<Instant>,
 }
 
 impl Engine {
@@ -182,12 +189,16 @@ impl Engine {
         settings: Settings,
         preview: FrameSlot,
         files: Files,
+        on_snooze: OnSnooze,
         events: UnboundedSender<View>,
         commands: Receiver<Command>,
     ) {
         // A demo is for looking at, so it mustn't overwrite the real calibration.
         let persist = !matches!(source, Source::Demo);
-        let crashed = (Notifier::new(files.clone()), events.clone());
+        let crashed = (
+            Notifier::new(files.clone(), on_snooze.clone()),
+            events.clone(),
+        );
         let engine = Engine {
             source,
             capture: None,
@@ -197,7 +208,7 @@ impl Engine {
             pending: VecDeque::new(),
             persist,
             finder: FaceFinder::new(),
-            notifier: Notifier::new(files),
+            notifier: Notifier::new(files, on_snooze),
             events,
             commands,
             settings,
@@ -209,6 +220,7 @@ impl Engine {
             started: Instant::now(),
             results_until: None,
             paused: false,
+            snoozed_until: None,
         };
         std::thread::Builder::new()
             .name("slouch-engine".into())
@@ -235,6 +247,7 @@ impl Engine {
 
     fn publish(&mut self) {
         self.view.settings = self.settings;
+        self.view.snoozed = self.snoozed();
         if self
             .results_until
             .is_some_and(|until| Instant::now() > until)
@@ -243,6 +256,17 @@ impl Engine {
             self.view.banner = None;
         }
         let _ = self.events.unbounded_send(self.view.clone());
+    }
+
+    /// Whether nudges are held back, ending a snooze whose time is up.
+    fn snoozed(&mut self) -> bool {
+        if self
+            .snoozed_until
+            .is_some_and(|until| Instant::now() > until)
+        {
+            self.snoozed_until = None;
+        }
+        self.snoozed_until.is_some()
     }
 
     fn set_status(&mut self, mood: Mood, status: impl Into<String>) {
@@ -313,6 +337,13 @@ impl Engine {
                 } else {
                     self.reopen_at = None;
                 }
+            }
+            Command::Snooze(snoozed) => {
+                self.snoozed_until = snoozed.then(|| Instant::now() + SNOOZE);
+                if snoozed {
+                    self.notifier.dismiss();
+                }
+                self.publish();
             }
             Command::Change(change) => self.change(change),
             Command::UseCamera(id) => {
@@ -477,6 +508,9 @@ impl Engine {
         };
         self.set_status(mood, status);
         match update.action {
+            Some(Action::Nag(problem)) if self.snoozed() => {
+                tracing::info!("nag held back by snooze: {problem}");
+            }
             Some(Action::Nag(problem)) => {
                 tracing::info!(
                     "nag: {problem} (camera drift {:.0}px)",

@@ -1,9 +1,11 @@
 //! Desktop notifications, branded as this app rather than a generic sender.
 //!
-//! Freedesktop notification servers can update a notification already on screen. macOS and
-//! Windows fire and forget, so there the nudge isn't withdrawn when you sit up.
+//! Freedesktop notification servers can update a notification already on screen, and give the
+//! nudge its "I'm up" and "Snooze" buttons. macOS and Windows fire and forget, so there the nudge
+//! has no buttons and isn't withdrawn when you sit up; snoozing is in the tray menu everywhere.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use notify_rust::{Notification, Timeout};
 
@@ -13,19 +15,28 @@ use crate::config::APP_NAME;
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
 
+/// Called, from another thread, when the nudge's Snooze button is pressed.
+pub type OnSnooze = Arc<dyn Fn() + Send + Sync>;
+
 pub struct Notifier {
     files: Files,
     /// The one slouch notification, so repeats replace it and sitting up can dismiss it.
     #[cfg(all(unix, not(target_os = "macos")))]
-    nudge: Option<notify_rust::NotificationHandle>,
+    nudge: Option<xdg::Nudge>,
+    #[cfg(all(unix, not(target_os = "macos")))]
+    on_snooze: OnSnooze,
 }
 
 impl Notifier {
-    pub fn new(files: Files) -> Self {
+    pub fn new(files: Files, on_snooze: OnSnooze) -> Self {
+        #[cfg(not(all(unix, not(target_os = "macos"))))]
+        let _ = on_snooze;
         Self {
             files,
             #[cfg(all(unix, not(target_os = "macos")))]
             nudge: None,
+            #[cfg(all(unix, not(target_os = "macos")))]
+            on_snooze,
         }
     }
 
@@ -54,18 +65,16 @@ impl Notifier {
     #[cfg(all(unix, not(target_os = "macos")))]
     pub fn nag(&mut self, reason: &str) {
         let body = nudge_body(reason);
-        if let Some(handle) = &mut self.nudge {
-            handle.summary(NUDGE).body(&escape(&body));
-            if let Err(error) = handle.update() {
-                tracing::warn!("notification update failed: {error}");
-            }
+        if let Some(nudge) = self.nudge.as_mut().filter(|n| n.is_open()) {
+            nudge.update(NUDGE, &escape(&body));
             return;
         }
-        match self
-            .base(&self.files.nudge_icon, NUDGE, &body, 15000)
-            .show()
-        {
-            Ok(handle) => self.nudge = Some(handle),
+        let mut notification = self.base(&self.files.nudge_icon, NUDGE, &body, 15000);
+        notification
+            .action(xdg::IM_UP, "I'm up")
+            .action(xdg::SNOOZE, "Snooze");
+        match notification.show() {
+            Ok(handle) => self.nudge = Some(xdg::Nudge::listen(handle, self.on_snooze.clone())),
             Err(error) => tracing::warn!("notification failed: {error}"),
         }
     }
@@ -83,8 +92,61 @@ impl Notifier {
 
     pub fn dismiss(&mut self) {
         #[cfg(all(unix, not(target_os = "macos")))]
-        if let Some(handle) = self.nudge.take() {
-            handle.close();
+        if let Some(nudge) = self.nudge.take() {
+            nudge.close();
+        }
+    }
+}
+
+/// The nudge on freedesktop servers, and the thread that hears its buttons.
+#[cfg(all(unix, not(target_os = "macos")))]
+mod xdg {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use notify_rust::{ActionResponse, NotificationHandle};
+
+    use super::OnSnooze;
+
+    pub const IM_UP: &str = "up";
+    pub const SNOOZE: &str = "snooze";
+
+    pub struct Nudge {
+        handle: NotificationHandle,
+        /// Cleared once the server closes it, after which it can't be updated or answered.
+        open: Arc<AtomicBool>,
+    }
+
+    impl Nudge {
+        /// Listen for a button press or the notification closing. "I'm up" needs nothing doing:
+        /// the server closes the nudge and the tracker sees you sit up.
+        pub fn listen(handle: NotificationHandle, on_snooze: OnSnooze) -> Self {
+            let open = Arc::new(AtomicBool::new(true));
+            let (id, closed) = (handle.id(), open.clone());
+            std::thread::spawn(move || {
+                let _ = notify_rust::handle_action(id, |response| {
+                    if matches!(response, ActionResponse::Custom(SNOOZE)) {
+                        on_snooze();
+                    }
+                });
+                closed.store(false, Ordering::Relaxed);
+            });
+            Self { handle, open }
+        }
+
+        pub fn is_open(&self) -> bool {
+            self.open.load(Ordering::Relaxed)
+        }
+
+        pub fn update(&mut self, summary: &str, body: &str) {
+            self.handle.summary(summary).body(body);
+            if let Err(error) = self.handle.update() {
+                tracing::warn!("notification update failed: {error}");
+            }
+        }
+
+        pub fn close(self) {
+            self.handle.close();
         }
     }
 }

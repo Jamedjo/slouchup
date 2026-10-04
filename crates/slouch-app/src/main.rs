@@ -22,7 +22,7 @@ use dioxus::desktop::{WindowBuilder, WindowCloseBehaviour};
 use crate::art::Theme;
 use crate::camera_view::FrameSlot;
 use crate::config::{APP_NAME, cache_dir};
-use crate::engine::Engine;
+use crate::engine::{Command, Engine};
 use crate::notifier::Notifier;
 use crate::source::Source;
 
@@ -31,7 +31,7 @@ fn main() {
     let cache = cache_dir();
     let files = art::write_files(&cache).expect("writing artwork to the cache directory");
     if args.test_notification {
-        Notifier::new(files).nag("You're 20% closer to the screen than usual.");
+        Notifier::new(files, Arc::new(|| {})).nag("You're 20% closer to the screen than usual.");
         return;
     }
     // The demo runs alongside the real app, so screenshots don't mean quitting it.
@@ -75,11 +75,15 @@ fn main() {
             preferences.settings(config::load_thresholds()),
         )
     };
+    let snooze = command_tx.clone();
     Engine::start(
         source,
         settings,
         preview.clone(),
         files,
+        Arc::new(move || {
+            let _ = snooze.send(Command::Snooze(true));
+        }),
         view_tx,
         command_rx,
     );

@@ -19,7 +19,7 @@ use futures_util::StreamExt;
 use crate::art::{self, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::APP_NAME;
-use crate::engine::{Banner, Command, LookAt, View};
+use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
 use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
 use crate::{screens, style};
 
@@ -59,9 +59,18 @@ struct Tray {
     icon: TrayIcon,
     status: MenuItem,
     pause: MenuItem,
+    snooze: MenuItem,
     icons: [(Mood, Icon); 3],
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
-    shown: std::cell::RefCell<(Option<Mood>, String)>,
+    shown: std::cell::RefCell<(Option<Mood>, String, bool)>,
+}
+
+fn snooze_label(snoozed: bool) -> String {
+    if snoozed {
+        "Stop snoozing".into()
+    } else {
+        format!("Snooze for {} minutes", SNOOZE.as_secs() / 60)
+    }
 }
 
 impl Tray {
@@ -72,6 +81,7 @@ impl Tray {
         };
         let status = MenuItem::with_id("status", "Starting…", false, None);
         let pause = MenuItem::with_id("pause", "Pause", true, None);
+        let snooze = MenuItem::with_id("snooze", snooze_label(false), true, None);
         let menu = Menu::new();
         menu.append_items(&[
             &status,
@@ -80,6 +90,7 @@ impl Tray {
             &MenuItem::with_id("game", "Calibration game", true, None),
             &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
             &MenuItem::with_id("settings", "Settings…", true, None),
+            &snooze,
             &pause,
             &MenuItem::with_id("quit", "Quit", true, None),
         ])
@@ -95,22 +106,27 @@ impl Tray {
             icon,
             status,
             pause,
+            snooze,
             icons,
             shown: Default::default(),
         }
     }
 
-    fn show(&self, mood: Mood, status: &str) {
+    fn show(&self, view: &View) {
         let mut shown = self.shown.borrow_mut();
-        if shown.0 != Some(mood)
-            && let Some((_, icon)) = self.icons.iter().find(|(m, _)| *m == mood)
+        if shown.0 != Some(view.mood)
+            && let Some((_, icon)) = self.icons.iter().find(|(m, _)| *m == view.mood)
         {
             let _ = self.icon.set_icon(Some(icon.clone()));
-            shown.0 = Some(mood);
+            shown.0 = Some(view.mood);
         }
-        if shown.1 != status {
-            self.status.set_text(status);
-            shown.1 = status.to_string();
+        if shown.1 != view.status {
+            self.status.set_text(&view.status);
+            shown.1 = view.status.clone();
+        }
+        if shown.2 != view.snoozed {
+            self.snooze.set_text(snooze_label(view.snoozed));
+            shown.2 = view.snoozed;
         }
     }
 }
@@ -235,6 +251,7 @@ pub fn App() -> Element {
                         .set_text(if now_paused { "Resume" } else { "Pause" });
                     bridge.send(Command::Pause(now_paused));
                 }
+                "snooze" => bridge.send(Command::Snooze(!view.peek().snoozed)),
                 "quit" => std::process::exit(0),
                 _ => {}
             }))
@@ -252,7 +269,7 @@ pub fn App() -> Element {
         let tray = tray.clone();
         move || {
             let current = view.read();
-            tray.show(current.mood, &current.status);
+            tray.show(&current);
         }
     });
 
@@ -346,6 +363,9 @@ pub fn App() -> Element {
                 div { class: "status mood-{current.mood:?}",
                     Eyes { mood: current.mood }
                     "{current.status}"
+                    if current.snoozed {
+                        span { class: "snoozed", "Nudges snoozed" }
+                    }
                 }
             }
             div { class: "buttons",

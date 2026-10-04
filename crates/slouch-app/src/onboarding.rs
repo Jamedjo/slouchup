@@ -34,7 +34,10 @@ pub fn Onboarding(
     let mut camera = use_signal(|| chosen);
     rsx! {
         div { class: "settings onboarding", "data-theme": Theme::Day.name(),
-            h1 { "Hi, I'm slouch", span { class: "up", "up" } }
+            h1 {
+                "Hi, I'm "
+                span { class: "wordmark", "slouch", span { class: "up", "up" } }
+            }
             p { class: "lede",
                 "I watch your posture through your webcam and nudge you once when you start to slouch. Everything happens on your computer."
             }

@@ -1,17 +1,27 @@
 #!/bin/sh
 # Regenerates docs/screenshots from the demo person, in a headless sway session with its own
 # D-Bus session, so nothing appears on the real desktop or in its tray.
-# Needs sway, grim, swaync, jq and ImageMagick. Run from the repository root after
+# Needs sway, waybar, grim, swaync, jq and ImageMagick. Run from the repository root after
 # `cargo build --release`.
 set -e
 
 if [ "$1" != "--inside" ]; then
     work=$(mktemp -d)
+    # A panel with a tray, so the screenshots show the tray icon. Waybar rather than swaybar,
+    # because swaybar can't show a tray icon named by its file path, as appindicator names them.
+    cat > "$work/waybar.json" <<EOF
+{ "position": "top", "height": 36, "modules-right": ["tray"], "tray": { "icon-size": 22 } }
+EOF
+    cat > "$work/waybar.css" <<EOF
+window#waybar { background: #2a2a2e; }
+#tray { padding: 0 12px; }
+EOF
     cat > "$work/config" <<EOF
 output HEADLESS-1 resolution 1100x860 position 0 0 bg #1b1d26 solid_color
 output HEADLESS-2 resolution 1100x860 position 1100 0 bg #1b1d26 solid_color
 focus output HEADLESS-1
 default_border none
+exec waybar -c "$work/waybar.json" -s "$work/waybar.css"
 exec swaync
 exec "$0" --inside "$work"
 EOF

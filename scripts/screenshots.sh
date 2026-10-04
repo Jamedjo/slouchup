@@ -36,7 +36,7 @@ sleep 11.5 && shot leaning
 kill $!
 
 "$app" --demo --settings > "$work/settings.log" 2>&1 &
-sleep 3 && swaync-client -C > /dev/null && swaymsg -q '[title="Slouch settings"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "Slouch settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
+sleep 3 && swaync-client -C > /dev/null && swaymsg -q '[title="slouchup settings"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "slouchup settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
 kill $!
 
 # The game's first step: sit up and look at one of the two screens. Whichever screen holds the

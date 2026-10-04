@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use posture::{Settings, Thresholds};
 use serde::{Deserialize, Serialize};
 
+/// Names the settings and cache directories, which the Python version shares, so it keeps the old name.
 pub const APP_ID: &str = "slouch";
-pub const APP_NAME: &str = "Slouch";
+/// The product name, always written lowercase.
+pub const APP_NAME: &str = "slouchup";
 
 /// Per-user cache directory. Never a shared temporary one, where other users could plant files.
 pub fn cache_dir() -> PathBuf {

@@ -1,0 +1,52 @@
+---
+// The nudge, as it appears on screen. A picture of it, so its buttons aren't real buttons.
+import UpTile from "./UpTile.astro";
+
+interface Props {
+  reason: string;
+}
+
+const { reason } = Astro.props;
+---
+
+<div class="toast" data-theme="night" role="img" aria-label={`A nudge: Psst, sit up. ${reason}`}>
+  <UpTile tile="nudge" size={44} />
+  <div class="content">
+    <strong class="title">Psst, sit <span class="up">up</span></strong>
+    <span class="reason">{reason}</span>
+    <div class="actions">
+      <span class="button nudge">I'm up</span>
+      <span class="button">Snooze</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .toast {
+    box-sizing: border-box;
+    display: flex;
+    gap: 14px;
+    width: 380px;
+    max-width: 100%;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--ink);
+    box-shadow: var(--shadow-sticker);
+    color: var(--butter);
+    font-family: var(--font-body);
+  }
+  .content { display: flex; flex-direction: column; gap: 6px; }
+  .title { padding-top: 6px; font: 600 22px/1.2 var(--font-display); }
+  .reason { font-size: 14px; line-height: 1.45; color: var(--sand); }
+  .actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
+  .button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 var(--space-4);
+    border: 2px solid var(--butter);
+    border-radius: var(--radius-pill);
+    font: 600 15px/1 var(--font-body);
+  }
+  .button.nudge { border-color: var(--tomato-fill); background: var(--tomato-fill); color: var(--ink); }
+</style>

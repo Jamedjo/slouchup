@@ -1,0 +1,25 @@
+---
+import Base from "../layouts/Base.astro";
+import Download from "../components/Download.astro";
+import Hero from "../components/Hero.astro";
+import Nudges from "../components/Nudges.astro";
+import Privacy from "../components/Privacy.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import Steps from "../components/Steps.astro";
+import TrayStrip from "../components/TrayStrip.astro";
+---
+
+<Base
+  title="slouchup: a friendly pair of eyes that helps you sit up"
+  description="slouchup watches your posture through your webcam and nudges you once when your head sinks or leans in. Everything happens on your computer."
+>
+  <SiteHeader />
+  <main>
+    <Hero />
+    <TrayStrip />
+    <Steps />
+    <Nudges />
+    <Privacy />
+    <Download />
+  </main>
+</Base>

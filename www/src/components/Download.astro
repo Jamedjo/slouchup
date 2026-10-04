@@ -1,0 +1,28 @@
+---
+import Band from "./Band.astro";
+import Wordmark from "./Wordmark.astro";
+
+const repository = "https://github.com/Jamedjo/slouchup";
+---
+
+<Band id="download" ground="ink">
+  <div class="download">
+    <Wordmark size="clamp(3.5rem, 8vw, 6rem)" />
+    <p>Two minutes to calibrate. A lot fewer sore necks.</p>
+    <div class="ctas">
+      <a class="cta nudge" href={`${repository}/releases`}>Download for Linux</a>
+      <a class="cta outline" href={repository}>Source on GitHub</a>
+    </div>
+  </div>
+  <footer>
+    <span>© {new Date().getFullYear()} James Edwards-Jones</span>
+    <span>Made for people who sit too long. Like us.</span>
+  </footer>
+</Band>
+
+<style>
+  .download { display: flex; flex-direction: column; align-items: center; gap: 28px; padding-block: 16px 96px; text-align: center; }
+  p { max-width: 32rem; margin: 0; font-size: 1.25rem; color: var(--sand); }
+  .ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid #4A463E; font-size: 14px; color: var(--text-muted); }
+</style>

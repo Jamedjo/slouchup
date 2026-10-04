@@ -35,10 +35,10 @@ and shows the eyes to look for in the tray. Turning the camera on starts the cal
 
 <img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
-Closing the camera window leaves slouchup running in the tray; the first close of each run says so
-in a notification with a Quit button.
+Closing the camera window leaves slouchup running in the tray. The first close of each run says so
+in a small window with Keep watching and Quit buttons, and in a notification.
 
-<img src="docs/screenshots/still-running.png" alt="The notification saying slouchup is still running, with a Quit button" width="420">
+<img src="docs/screenshots/still-running.png" alt="The window and notification saying slouchup is still running, each with a way to quit" width="520">
 
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 

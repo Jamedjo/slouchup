@@ -13,6 +13,7 @@ mod onboarding;
 mod screens;
 mod settings;
 mod source;
+mod still_running;
 mod style;
 mod ui;
 #[cfg(windows)]

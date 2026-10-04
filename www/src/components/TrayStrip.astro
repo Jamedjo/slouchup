@@ -28,7 +28,7 @@ const states: { mood: Mood; label: string }[] = [
 
 <style>
   .strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px 48px; }
-  p { flex: 1 1 260px; margin: 0; font: 600 1.75rem/1.2 var(--font-display); }
+  p { flex: 1 1 260px; margin: 0; font: var(--weight-display) 1.75rem/1.2 var(--font-display); letter-spacing: -0.02em; }
   ul { display: flex; flex-wrap: wrap; gap: 32px; margin: 0; padding: 0; list-style: none; }
   li { display: flex; align-items: center; gap: 12px; font-weight: 600; }
   .upright :global(.eyes) { color: var(--state-upright); }

@@ -20,9 +20,9 @@ const { ground, label, title } = Astro.props;
   .white { background: var(--white); color: var(--ink); }
   .butter { background: var(--butter); color: var(--ink); }
   .ink { background: var(--ink); color: var(--butter); }
-  .label { font: 600 1.1rem var(--font-display); color: var(--tomato-text); }
+  .label { font: var(--weight-display) 1.1rem var(--font-display); color: var(--tomato-text); }
   .ink .label { color: var(--tomato-soft); }
-  h3 { margin: 0; font: 600 1.6rem/1.15 var(--font-display); }
+  h3 { margin: 0; font: var(--weight-display) 1.6rem/1.15 var(--font-display); letter-spacing: -0.015em; }
   p { margin: 0; font-size: 1.05rem; line-height: 1.5; }
   .ink p { color: var(--sand); }
 </style>

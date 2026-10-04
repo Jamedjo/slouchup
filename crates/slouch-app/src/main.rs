@@ -50,6 +50,11 @@ fn main() {
     let (command_tx, command_rx) = crossbeam_channel::unbounded();
     let (view_tx, view_rx) = futures_channel::mpsc::unbounded();
     let preview = FrameSlot::default();
+    if !args.demo
+        && let Err(error) = config::adopt_old_settings()
+    {
+        tracing::warn!("couldn't copy settings from before the rename: {error}");
+    }
     let preferences = config::load_preferences();
     let (source, settings) = if args.demo {
         (Source::Demo, posture::Settings::default())

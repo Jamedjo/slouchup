@@ -51,8 +51,10 @@ target/release/slouch --demo     # with the drawn stand-in instead of a webcam
 target/release/slouch --settings # with the settings window open
 ```
 
-The limits are saved in `~/.config/slouch/thresholds.json`, other settings in
-`~/.config/slouch/settings.json`, and each calibration game's recording in `~/.cache/slouch/games/`.
+The limits are saved in `~/.config/slouchup/thresholds.json`, other settings in
+`~/.config/slouchup/settings.json`, and each calibration game's recording in
+`~/.cache/slouchup/games/`. Settings from before the rename, in `~/.config/slouch`, are copied over
+on first run.
 
 ## Platforms
 

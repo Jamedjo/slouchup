@@ -1,7 +1,6 @@
 import { defineConfig } from "astro/config";
 
-// GitHub Pages serves the site from the repository's path.
+// GitHub Pages serves the site at its custom domain, from the root.
 export default defineConfig({
-  site: "https://jamedjo.github.io",
-  base: "/slouchup",
+  site: "https://slouchup.com",
 });

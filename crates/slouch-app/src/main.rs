@@ -88,7 +88,7 @@ fn main() {
         source,
         settings,
         preview.clone(),
-        files,
+        files.clone(),
         Arc::new(move || {
             let _ = snooze.send(Command::Snooze(true));
         }),
@@ -103,6 +103,7 @@ fn main() {
         start_with_settings: args.settings,
         preview,
         onboarding,
+        files,
     };
 
     let window = WindowBuilder::new()

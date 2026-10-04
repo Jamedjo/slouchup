@@ -1,6 +1,13 @@
 ---
 // The product doing its job: a camera picture with its baseline and slouch lines, and the nudge.
+import { BASELINE, person } from "../brand/person";
 import Toast from "./Toast.astro";
+
+// The slouch line sits just above the leaning person's eyes, as it would when the nudge fires.
+const lines = [
+  { name: "baseline", y: BASELINE, width: 62 },
+  { name: "slouch", y: BASELINE + 28, width: 52 },
+];
 ---
 
 <section class="container hero">
@@ -18,17 +25,17 @@ import Toast from "./Toast.astro";
   </div>
   <div class="visual">
     <div class="frame">
-      <svg viewBox="0 0 600 380" aria-hidden="true">
-        <rect width="600" height="380" fill="#E9E2CF" />
-        <rect x="50" y="110" width="84" height="270" fill="#B49A7C" />
-        <rect x="440" y="60" width="100" height="126" rx="6" fill="#6E6A60" />
-        <rect x="452" y="72" width="76" height="102" fill="#F6D77A" />
-        <path d="M60 380 C 100 300 200 280 300 280 C 400 280 500 300 540 380 Z" fill="#3B6FD8" />
-        <ellipse cx="300" cy="160" rx="80" ry="96" fill="#D9A27A" />
-        <circle cx="270" cy="152" r="7" fill="#22201C" />
-        <circle cx="330" cy="152" r="7" fill="#22201C" />
-        <path d="M0 130 H600" stroke="#22201C" stroke-width="2" />
-        <path d="M0 180 H600" stroke="#C8432A" stroke-width="2.5" stroke-dasharray="10 8" />
+      <svg viewBox="0 0 640 480" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <Fragment set:html={person("lean")} />
+        {
+          lines.map(({ name, y, width }) => (
+            <g class={`line ${name}`}>
+              <path d={`M0 ${y} H640`} />
+              <rect x="16" y={y - 10} width={width} height="20" rx="10" />
+              <text x={16 + width / 2} y={y + 4}>{name}</text>
+            </g>
+          ))
+        }
       </svg>
     </div>
     <div class="toast"><Toast reason="You're 32% closer to the screen than usual." /></div>
@@ -39,13 +46,19 @@ import Toast from "./Toast.astro";
   .hero { display: flex; flex-wrap: wrap; align-items: center; gap: 56px; padding-block: 48px 80px; }
   .copy { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
   .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
-  .visual { position: relative; flex: 1 1 480px; min-width: 0; padding-bottom: 72px; }
+  .visual { position: relative; flex: 1 1 480px; min-width: 0; padding-bottom: 136px; }
   .frame { overflow: hidden; border: 3px solid var(--ink); border-radius: var(--radius-lg); background: #E9E2CF; box-shadow: 8px 8px 0 var(--ink); }
-  .frame svg { display: block; width: 100%; height: auto; }
+  .frame svg { display: block; width: 100%; height: auto; aspect-ratio: 600 / 380; }
+  .line path { stroke-width: 2; }
+  .line text { font: 600 11px var(--font-body); text-anchor: middle; fill: var(--butter); }
+  .baseline path { stroke: var(--ink); }
+  .baseline rect { fill: var(--ink); }
+  .slouch path { stroke: var(--tomato-text); stroke-width: 2.5; stroke-dasharray: 10 8; }
+  .slouch rect { fill: var(--tomato-fill); }
+  /* The nudge overlaps only the bottom edge of the picture, below the person's chin. */
   .toast { position: absolute; right: -8px; bottom: 0; max-width: 100%; }
-  /* On a phone the nudge would cover the picture, so it overlaps only the corner. */
   @media (max-width: 560px) {
     .visual { padding-bottom: 0; }
-    .toast { position: relative; right: auto; margin: -40px 0 0 16px; }
+    .toast { position: relative; right: auto; margin: -16px 0 0 16px; }
   }
 </style>

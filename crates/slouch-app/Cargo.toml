@@ -23,5 +23,10 @@ serde_json = "1.0.151"
 tracing = "0.1"
 yunet = { version = "0.1.0", path = "../yunet" }
 
+[build-dependencies]
+ico = "0.5"
+resvg = { version = "0.45", default-features = false }
+winresource = "0.1"
+
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"

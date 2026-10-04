@@ -5,10 +5,12 @@ import Wordmark from "./Wordmark.astro";
 const repository = "https://github.com/Jamedjo/slouchup";
 const latest = `${repository}/releases/latest/download`;
 
-// Windows is shown until the page finds it's on a Mac.
+// Windows is shown unless the page finds it's on a Mac or a Linux desktop. The file names are the
+// ones the release workflow publishes.
 const platforms = [
   { id: "windows", name: "Windows", href: `${latest}/slouchup-windows.zip` },
-  { id: "mac", name: "Mac", href: `${latest}/slouchup-mac.zip` },
+  { id: "mac", name: "Mac", href: `${latest}/slouchup-mac.dmg` },
+  { id: "linux", name: "Linux", href: `${latest}/slouchup-linux.AppImage` },
 ];
 const others = (id: string) => platforms.filter((platform) => platform.id !== id);
 ---
@@ -19,7 +21,10 @@ const others = (id: string) => platforms.filter((platform) => platform.id !== id
       {
         const platform = navigator.userAgentData?.platform ?? navigator.platform;
         const isIpad = navigator.maxTouchPoints > 1;
-        if (/mac/i.test(platform) && !isIpad) document.currentScript.parentElement.dataset.platform = "mac";
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const shown = document.currentScript.parentElement.dataset;
+        if (/mac/i.test(platform) && !isIpad) shown.platform = "mac";
+        else if (/linux/i.test(platform) && !isAndroid) shown.platform = "linux";
       }
     </script>
     <Wordmark size="clamp(3.5rem, 8vw, 6rem)" />
@@ -31,8 +36,14 @@ const others = (id: string) => platforms.filter((platform) => platform.id !== id
     {
       platforms.map(({ id }) => (
         <p class="others" data-for={id}>
-          Also for {others(id).map(({ name, href }) => <a href={href}>{name}</a>)}. On Linux,{" "}
-          <a href={`${repository}#using-it`}>build it from source</a>.
+          Also for{" "}
+          {others(id).map(({ name, href }, i) => (
+            <>
+              {i > 0 && " and "}
+              <a href={href}>{name}</a>
+            </>
+          ))}
+          .
         </p>
       ))
     }
@@ -49,7 +60,8 @@ const others = (id: string) => platforms.filter((platform) => platform.id !== id
   .ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
   .others { margin-top: -12px; font-size: 1rem; }
   .others a { color: var(--butter); }
-  [data-platform="windows"] [data-for="mac"],
-  [data-platform="mac"] [data-for="windows"] { display: none; }
+  .download:not([data-platform="windows"]) [data-for="windows"],
+  .download:not([data-platform="mac"]) [data-for="mac"],
+  .download:not([data-platform="linux"]) [data-for="linux"] { display: none; }
   footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid #4A463E; font-size: 14px; color: var(--text-muted); }
 </style>

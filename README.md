@@ -35,6 +35,11 @@ and shows the eyes to look for in the tray. Turning the camera on starts the cal
 
 <img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
+Closing the camera window leaves slouchup running in the tray; the first close of each run says so
+in a notification with a Quit button.
+
+<img src="docs/screenshots/still-running.png" alt="The notification saying slouchup is still running, with a Quit button" width="420">
+
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 
 ### Calibration game

@@ -1,12 +1,14 @@
-//! Where things live on disk. Shared with the Python version so either can read the other's calibration.
+//! Where things live on disk.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use posture::{Settings, Thresholds};
 use serde::{Deserialize, Serialize};
 
-/// Names the settings and cache directories, which the Python version shares, so it keeps the old name.
-pub const APP_ID: &str = "slouch";
+/// Names the settings and cache directories.
+pub const APP_ID: &str = "slouchup";
+/// The settings directory's name before the rename, which the Python version still uses.
+const OLD_ID: &str = "slouch";
 /// The product name, always written lowercase.
 pub const APP_NAME: &str = "slouchup";
 
@@ -37,11 +39,36 @@ pub fn save_game(stamp: u64, json: &str) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-fn config_file(name: &str) -> PathBuf {
+fn config_dir(id: &str) -> PathBuf {
     dirs::config_dir()
         .expect("a home directory for settings")
-        .join(APP_ID)
-        .join(name)
+        .join(id)
+}
+
+fn config_file(name: &str) -> PathBuf {
+    config_dir(APP_ID).join(name)
+}
+
+const SETTINGS_FILES: [&str; 2] = ["thresholds.json", "settings.json"];
+
+/// Copy settings saved under the old name, once, so the rename doesn't lose a calibration.
+pub fn adopt_old_settings() -> std::io::Result<()> {
+    copy_settings(&config_dir(OLD_ID), &config_dir(APP_ID))
+}
+
+/// Copy the settings files from `old` into `new`, unless `new` already exists.
+fn copy_settings(old: &Path, new: &Path) -> std::io::Result<()> {
+    if new.exists() || !old.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(new)?;
+    for name in SETTINGS_FILES {
+        let from = old.join(name);
+        if from.exists() {
+            std::fs::copy(from, new.join(name))?;
+        }
+    }
+    Ok(())
 }
 
 fn thresholds_file() -> PathBuf {
@@ -66,8 +93,8 @@ fn write_private(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()>
     options.open(path)?.write_all(contents)
 }
 
-/// Choices from the settings window. The limits live apart, in thresholds.json, which the
-/// Python version also reads.
+/// Choices from the settings window. The limits live apart, in thresholds.json, in the format
+/// the Python version wrote.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preferences {
@@ -164,4 +191,33 @@ pub fn parse_args() -> Args {
         }
     }
     args
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_are_copied_only_when_there_are_no_new_ones() {
+        let root = std::env::temp_dir().join(format!("slouchup-test-{}", std::process::id()));
+        let (old, new) = (root.join("old"), root.join("new"));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("thresholds.json"), "old").unwrap();
+
+        copy_settings(&old, &new).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(new.join("thresholds.json")).unwrap(),
+            "old"
+        );
+        assert!(!new.join("settings.json").exists());
+
+        std::fs::write(new.join("thresholds.json"), "new").unwrap();
+        copy_settings(&old, &new).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(new.join("thresholds.json")).unwrap(),
+            "new"
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

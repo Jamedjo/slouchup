@@ -215,3 +215,12 @@ html, body {
 .still-running h1 .eyes { width: 32px; height: 32px; }
 .still-running p { margin: 0; }
 .still-running .buttons { margin-top: var(--space-2); }
+
+/* First run: the camera window's welcome, in the settings window's day look */
+
+.onboarding h1 { padding-top: var(--rise-up); }
+.onboarding .lede { margin: 0; font-size: 17px; }
+.tray-moods { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+.tray-mood { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 14px; font-weight: 600; }
+.tray-mood .eyes { width: 24px; height: 24px; }
+.onboarding .buttons { margin-top: var(--space-2); }

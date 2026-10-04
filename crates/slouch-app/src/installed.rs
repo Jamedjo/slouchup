@@ -1,5 +1,6 @@
-//! The app as the Windows installer, Velopack, puts it: in `%LocalAppData%\slouchup`, which
-//! uninstalling empties, so the app's own files are kept elsewhere (see `config`).
+//! The app as Velopack packages it: installed by the Windows installer in
+//! `%LocalAppData%\slouchup`, which uninstalling empties, so the app's own files are kept elsewhere
+//! (see `config`), or run as the Linux AppImage, which an update replaces where it is.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,14 +20,17 @@ static UPDATES: OnceLock<UpdateManager> = OnceLock::new();
 /// exits once a step is done. Otherwise this returns straight away, unless an update downloaded
 /// last time wasn't installed on quitting, in which case it's installed and the app restarted.
 pub fn run_installer_step() {
-    VelopackApp::build()
+    #[cfg(windows)]
+    let mut app = VelopackApp::build()
         // Settings stay, as Windows apps usually leave them, so a reinstall picks them up.
-        .on_before_uninstall_fast_callback(|_| crate::windows_shell::unregister_toast_sender())
-        .run();
+        .on_before_uninstall_fast_callback(|_| crate::windows_shell::unregister_toast_sender());
+    #[cfg(not(windows))]
+    let mut app = VelopackApp::build();
+    app.run();
 }
 
 /// Check for a new release now and every few hours, downloading it quietly for the next quit.
-/// Does nothing when the installer didn't install this copy, as when it's built from source.
+/// Does nothing for a copy Velopack didn't package, as when it's built from source.
 pub fn keep_up_to_date() {
     let source = GithubSource::new(REPOSITORY, None, false);
     let Ok(manager) = UpdateManager::new(source, None, None) else {

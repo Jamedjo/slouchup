@@ -61,8 +61,17 @@ on first run.
 ## Platforms
 
 Linux is where slouchup is developed and used. CI builds and tests it on macOS and Windows too, but
-it hasn't been run as an app there yet. `packaging/macos/bundle.sh` makes an app bundle, which macOS
-needs before it allows camera access.
+it hasn't been run as an app there yet.
+
+Every push to `main` packages it for each platform, and a `v*` tag publishes the packages as a
+[release](https://github.com/Jamedjo/slouchup/releases):
+
+- Linux: `slouchup-linux.AppImage`, from `packaging/linux/appimage.sh`
+- Mac: `slouchup-mac.dmg`, holding `slouchup.app` for Apple silicon and Intel, from
+  `packaging/macos/bundle.sh`. macOS only grants camera access to an app bundle.
+- Windows: `slouchup-windows.zip`, holding `slouchup.exe`, from `packaging/windows/zip.ps1`
+
+The packages aren't signed, so macOS and Windows warn before opening them the first time.
 
 ## How it's built
 

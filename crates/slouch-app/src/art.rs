@@ -158,7 +158,7 @@ pub fn rasterise(svg: &str, width: u32, height: u32) -> Vec<u8> {
         .collect()
 }
 
-fn write_png(svg: &str, size: u32, path: &Path) -> std::io::Result<()> {
+pub fn write_png(svg: &str, size: u32, path: &Path) -> std::io::Result<()> {
     render(svg, size, size)
         .save_png(path)
         .map_err(std::io::Error::other)

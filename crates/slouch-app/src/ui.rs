@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crossbeam_channel::Sender;
 use dioxus::desktop::tao::monitor::MonitorHandle;
-use dioxus::desktop::tao::window::{Fullscreen, Icon as WindowIcon, Theme as SystemTheme};
+use dioxus::desktop::tao::window::{Fullscreen, Icon as WindowIcon};
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon};
 use dioxus::desktop::{
@@ -60,9 +60,20 @@ struct Tray {
     status: MenuItem,
     pause: MenuItem,
     snooze: MenuItem,
-    icons: [(Mood, Icon); 3],
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
-    shown: std::cell::RefCell<(Option<Mood>, String, bool)>,
+    shown: std::cell::RefCell<Shown>,
+}
+
+struct Shown {
+    mood: Mood,
+    theme: Theme,
+    status: String,
+    snoozed: bool,
+}
+
+fn tray_icon(mood: Mood, theme: Theme) -> Icon {
+    Icon::from_rgba(art::rasterise(&art::tray_svg(mood, theme), 64, 64), 64, 64)
+        .expect("icon is 64x64")
 }
 
 fn snooze_label(snoozed: bool) -> String {
@@ -75,11 +86,13 @@ fn snooze_label(snoozed: bool) -> String {
 
 impl Tray {
     fn new(theme: Theme) -> Self {
-        let icon = |mood| {
-            Icon::from_rgba(art::rasterise(&art::tray_svg(mood, theme), 64, 64), 64, 64)
-                .expect("icon is 64x64")
+        let shown = Shown {
+            mood: Mood::Idle,
+            theme,
+            status: "Starting…".into(),
+            snoozed: false,
         };
-        let status = MenuItem::with_id("status", "Starting…", false, None);
+        let status = MenuItem::with_id("status", &shown.status, false, None);
         let pause = MenuItem::with_id("pause", "Pause", true, None);
         let snooze = MenuItem::with_id("snooze", snooze_label(false), true, None);
         let menu = Menu::new();
@@ -95,54 +108,60 @@ impl Tray {
             &MenuItem::with_id("quit", "Quit", true, None),
         ])
         .expect("tray menu builds");
-        let icons = [
-            (Mood::Good, icon(Mood::Good)),
-            (Mood::Bad, icon(Mood::Bad)),
-            (Mood::Idle, icon(Mood::Idle)),
-        ];
-        let icon = dioxus::desktop::trayicon::init_tray_icon(menu, Some(icons[2].1.clone()));
+        let icon = dioxus::desktop::trayicon::init_tray_icon(
+            menu,
+            Some(tray_icon(shown.mood, shown.theme)),
+        );
         let _ = icon.set_tooltip(Some(APP_NAME));
         Self {
             icon,
             status,
             pause,
             snooze,
-            icons,
-            shown: Default::default(),
+            shown: shown.into(),
         }
     }
 
     fn show(&self, view: &View) {
         let mut shown = self.shown.borrow_mut();
-        if shown.0 != Some(view.mood)
-            && let Some((_, icon)) = self.icons.iter().find(|(m, _)| *m == view.mood)
-        {
-            let _ = self.icon.set_icon(Some(icon.clone()));
-            shown.0 = Some(view.mood);
+        if shown.mood != view.mood {
+            shown.mood = view.mood;
+            let _ = self.icon.set_icon(Some(tray_icon(shown.mood, shown.theme)));
         }
-        if shown.1 != view.status {
+        if shown.status != view.status {
             self.status.set_text(&view.status);
-            shown.1 = view.status.clone();
+            shown.status = view.status.clone();
         }
-        if shown.2 != view.snoozed {
+        if shown.snoozed != view.snoozed {
             self.snooze.set_text(snooze_label(view.snoozed));
-            shown.2 = view.snoozed;
+            shown.snoozed = view.snoozed;
+        }
+    }
+
+    fn suit_panel(&self, theme: Theme) {
+        let mut shown = self.shown.borrow_mut();
+        if shown.theme != theme {
+            shown.theme = theme;
+            let _ = self.icon.set_icon(Some(tray_icon(shown.mood, shown.theme)));
         }
     }
 }
 
-/// The theme of the panel the tray sits on. GNOME's top bar is dark whatever the desktop theme,
-/// and nothing says what a Linux panel looks like, so there it's taken as dark; macOS and Windows
-/// panels follow the system theme.
+/// The theme of the panel the tray sits on. Windows themes its taskbar apart from apps, and the
+/// macOS menu bar follows the system. Nothing says what a Linux panel looks like, but GNOME's top
+/// bar is dark whatever the desktop theme, so there it's taken as dark.
 fn panel_theme() -> Theme {
-    if cfg!(target_os = "linux") {
-        return Theme::Night;
-    }
-    match window().window.theme() {
-        SystemTheme::Dark => Theme::Night,
-        _ => Theme::Day,
-    }
+    #[cfg(windows)]
+    let light = crate::windows_shell::taskbar_is_light();
+    #[cfg(target_os = "macos")]
+    let light = window().window.theme() == dioxus::desktop::tao::window::Theme::Light;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let light = false;
+    if light { Theme::Day } else { Theme::Night }
 }
+
+/// How often to check whether the panel has changed theme, say for night mode.
+const PANEL_CHECK: Duration = Duration::from_secs(2);
 
 fn show_main_window() {
     let main = window();
@@ -155,6 +174,18 @@ pub fn App() -> Element {
     let bridge = use_context::<Bridge>();
     let mut view = use_signal(View::default);
     let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme())));
+    use_future({
+        let tray = tray.clone();
+        move || {
+            let tray = tray.clone();
+            async move {
+                loop {
+                    futures_timer::Delay::new(PANEL_CHECK).await;
+                    tray.suit_panel(panel_theme());
+                }
+            }
+        }
+    });
     let mut paused = use_signal(|| false);
     let monitors = use_signal(Vec::<MonitorHandle>::new);
     let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));

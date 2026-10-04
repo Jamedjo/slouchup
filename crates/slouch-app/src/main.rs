@@ -9,6 +9,7 @@ mod engine;
 mod finder;
 mod frames;
 mod notifier;
+mod onboarding;
 mod screens;
 mod settings;
 mod source;
@@ -50,6 +51,11 @@ fn main() {
     };
 
     let (command_tx, command_rx) = crossbeam_channel::unbounded();
+    // The first run keeps the camera off until its welcome says to turn it on.
+    let onboarding = !args.demo && !config::has_thresholds();
+    if onboarding {
+        let _ = command_tx.send(Command::Pause(true));
+    }
     let (view_tx, view_rx) = futures_channel::mpsc::unbounded();
     let preview = FrameSlot::default();
     if !args.demo
@@ -92,16 +98,17 @@ fn main() {
     let bridge = ui::Bridge {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),
-        start_with_game: args.game || (!args.demo && !config::has_thresholds()),
+        start_with_game: args.game,
         persist: !args.demo,
         start_with_settings: args.settings,
         preview,
+        onboarding,
         files,
     };
 
     let window = WindowBuilder::new()
         .with_title(APP_NAME)
-        .with_visible(args.show)
+        .with_visible(args.show || onboarding)
         .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 600.0));
     let desktop = ui::window_config(window, Theme::Night)
         .with_close_behaviour(WindowCloseBehaviour::WindowHides)

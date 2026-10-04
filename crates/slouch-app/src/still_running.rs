@@ -39,5 +39,5 @@ fn keep_watching(_: MouseEvent) {
 }
 
 fn quit(_: MouseEvent) {
-    std::process::exit(0);
+    crate::quit();
 }

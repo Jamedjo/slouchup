@@ -21,6 +21,7 @@ use crate::art::{self, Files, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
+use crate::history_window::{HistoryHandle, HistoryPage, HistoryPageProps};
 use crate::notifier;
 use crate::onboarding::Onboarding;
 use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
@@ -53,6 +54,8 @@ pub struct Bridge {
     /// The first run, which waits for the welcome to turn the camera on.
     pub onboarding: bool,
     pub files: Files,
+    pub start_with_history: bool,
+    pub history: crate::engine::SharedHistory,
 }
 
 impl Bridge {
@@ -112,6 +115,7 @@ impl Tray {
             &MenuItem::with_id("show", "Show camera", true, None),
             &MenuItem::with_id("game", "Calibration game", true, None),
             &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
+            &MenuItem::with_id("history", "History…", true, None),
             &MenuItem::with_id("settings", "Settings…", true, None),
             &snooze,
             &pause,
@@ -256,6 +260,36 @@ pub fn App() -> Element {
             let _ = window().new_window(dom, config);
         }
     };
+    let history_open = use_hook(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let open_history = {
+        let bridge = bridge.clone();
+        move || {
+            if history_open.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            let handle = HistoryHandle {
+                history: bridge.history.clone(),
+                open: history_open.clone(),
+            };
+            let dom = VirtualDom::new_with_props(HistoryPage, HistoryPageProps { handle });
+            let config = window_config(
+                WindowBuilder::new()
+                    .with_title(format!("{APP_NAME} history"))
+                    .with_inner_size(dioxus::desktop::LogicalSize::new(720.0, 640.0)),
+                Theme::Day,
+            );
+            let _ = window().new_window(dom, config);
+        }
+    };
+    use_hook({
+        let open_history = open_history.clone();
+        let wanted = bridge.start_with_history;
+        move || {
+            if wanted {
+                open_history();
+            }
+        }
+    });
     use_hook({
         let open_settings = open_settings.clone();
         let wanted = bridge.start_with_settings;
@@ -333,10 +367,12 @@ pub fn App() -> Element {
         let tray = tray.clone();
         let mut start_game = start_game.clone();
         let open_settings = open_settings.clone();
+        let open_history = open_history.clone();
         move || {
             std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
                 "show" => show_main_window(),
                 "settings" => open_settings(),
+                "history" => open_history(),
                 "game" => start_game(),
                 "recalibrate" => bridge.send(Command::Recalibrate),
                 "pause" => {
@@ -350,7 +386,7 @@ pub fn App() -> Element {
                     }
                 }
                 "snooze" => bridge.send(Command::Snooze(!view.peek().snoozed)),
-                "quit" => std::process::exit(0),
+                "quit" => crate::quit(),
                 _ => {}
             }))
         }
@@ -478,6 +514,7 @@ pub fn App() -> Element {
             div { class: "buttons",
                 button { class: "button primary", onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
                 button { class: "button", onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
+                button { class: "button", onclick: move |_| { let open = open_history.clone(); open() }, "History" }
                 button { class: "button", onclick: move |_| { let open = open_settings.clone(); open() }, "Settings" }
             }
         }

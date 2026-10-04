@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 base64 = "0.22"
 camera-drift = { version = "0.1.0", path = "../camera-drift" }
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 crossbeam-channel = "0.5"
 dioxus = { version = "0.7.10", features = ["desktop"] }
 dioxus-cameras = "0.3.2"

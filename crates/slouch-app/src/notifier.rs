@@ -22,6 +22,7 @@ const NUDGE: &str = "Psst, sit up";
 pub type OnSnooze = Arc<dyn Fn() + Send + Sync>;
 
 const SNOOZE: &str = "snooze";
+const QUIT: &str = "quit";
 
 /// "I'm up" needs nothing doing: the notification closes and the tracker sees you sit up. macOS
 /// shows a single action button, so there the notification's own Close stands in for it.
@@ -55,28 +56,9 @@ impl Notifier {
         }
     }
 
-    fn base(&self, icon: &Path, summary: &str, body: &str, timeout_ms: u32) -> Notification {
-        let mut notification = Notification::new();
-        notification
-            .appname(APP_NAME)
-            .summary(summary)
-            .body(&escape(body))
-            .icon(&icon.to_string_lossy())
-            .timeout(Timeout::Milliseconds(timeout_ms));
-        #[cfg(all(unix, not(target_os = "macos")))]
-        notification.hint(notify_rust::Hint::DesktopEntry(
-            crate::config::APP_ID.into(),
-        ));
-        #[cfg(windows)]
-        if let Some(sender) = crate::windows_shell::toast_sender(&self.files.icon) {
-            notification.app_id(sender);
-        }
-        notification
-    }
-
     /// A short notice.
     pub fn info(&self, summary: &str, body: &str) {
-        show(&self.base(&self.files.icon, summary, body, 3000));
+        show(&base(&self.files, &self.files.icon, summary, body, 3000));
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -86,7 +68,7 @@ impl Notifier {
             nudge.update(NUDGE, &escape(&body));
             return;
         }
-        let mut notification = self.base(&self.files.nudge_icon, NUDGE, &body, 15000);
+        let mut notification = base(&self.files, &self.files.nudge_icon, NUDGE, &body, 15000);
         match with_buttons(&mut notification).show() {
             Ok(handle) => self.nudge = Some(xdg::Nudge::listen(handle, self.on_snooze.clone())),
             Err(error) => tracing::warn!("notification failed: {error}"),
@@ -97,7 +79,13 @@ impl Notifier {
     /// its banner has gone, so only one waits at a time, and nudges meanwhile come without buttons.
     #[cfg(not(all(unix, not(target_os = "macos"))))]
     pub fn nag(&mut self, reason: &str) {
-        let mut notification = self.base(&self.files.nudge_icon, NUDGE, &nudge_body(reason), 15000);
+        let mut notification = base(
+            &self.files,
+            &self.files.nudge_icon,
+            NUDGE,
+            &nudge_body(reason),
+            15000,
+        );
         if self.awaiting_answer.swap(true, Ordering::AcqRel) {
             show(&notification);
             return;
@@ -127,6 +115,52 @@ impl Notifier {
         if let Some(nudge) = self.nudge.take() {
             nudge.close();
         }
+    }
+}
+
+fn base(files: &Files, icon: &Path, summary: &str, body: &str, timeout_ms: u32) -> Notification {
+    let mut notification = Notification::new();
+    notification
+        .appname(APP_NAME)
+        .summary(summary)
+        .body(&escape(body))
+        .icon(&icon.to_string_lossy())
+        .timeout(Timeout::Milliseconds(timeout_ms));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    notification.hint(notify_rust::Hint::DesktopEntry(
+        crate::config::APP_ID.into(),
+    ));
+    #[cfg(windows)]
+    if let Some(sender) = crate::windows_shell::toast_sender(&files.icon) {
+        notification.app_id(sender);
+    }
+    #[cfg(not(windows))]
+    let _ = files;
+    notification
+}
+
+/// Says the app carries on in the tray once its window closes, with a button to quit it instead.
+pub fn still_running(files: &Files) {
+    let mut notification = base(
+        files,
+        &files.icon,
+        &format!("{APP_NAME} is still running"),
+        "It's in your tray, keeping an eye on your posture.",
+        8000,
+    );
+    notification.action(QUIT, "Quit");
+    match notification.show() {
+        // Waits until the notification is answered or dismissed.
+        Ok(handle) => {
+            std::thread::spawn(move || {
+                let _ = handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
+                    if matches!(response, notify_rust::NotificationResponse::Action(key) if key == QUIT) {
+                        std::process::exit(0);
+                    }
+                });
+            });
+        }
+        Err(error) => tracing::warn!("notification failed: {error}"),
     }
 }
 

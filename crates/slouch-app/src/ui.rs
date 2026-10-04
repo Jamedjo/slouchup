@@ -4,24 +4,26 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
+use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::tao::monitor::MonitorHandle;
 use dioxus::desktop::tao::window::{Fullscreen, Icon as WindowIcon};
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon};
 use dioxus::desktop::{
     Config, DesktopContext, WindowBuilder, use_muda_event_handler, use_tray_menu_event_handler,
-    window,
+    use_wry_event_handler, window,
 };
 use dioxus::prelude::*;
 use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::StreamExt;
 
-use crate::art::{self, Mood, Theme};
+use crate::art::{self, Files, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::APP_NAME;
 use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
+use crate::notifier;
 use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
-use crate::{screens, style};
+use crate::{screens, still_running, style};
 
 /// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
 /// painted before the page loads, so it doesn't flash white.
@@ -47,6 +49,7 @@ pub struct Bridge {
     /// Whether settings and calibration are saved; demos leave them alone.
     pub persist: bool,
     pub start_with_settings: bool,
+    pub files: Files,
 }
 
 impl Bridge {
@@ -264,6 +267,38 @@ pub fn App() -> Element {
         }
     });
 
+    // Closing the camera window only hides it, so the first close says where the app went: in a
+    // window that can quit it, and in a notification.
+    let point_to_tray = use_hook({
+        let files = bridge.files.clone();
+        let told = std::rc::Rc::new(std::cell::Cell::new(false));
+        move || {
+            move || {
+                if !told.replace(true) {
+                    notifier::still_running(&files);
+                }
+            }
+        }
+    });
+    use_wry_event_handler({
+        let main = window().id();
+        let asked = std::rc::Rc::new(std::cell::Cell::new(false));
+        move |event, _| {
+            if let Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+                ..
+            } = event
+                && *window_id == main
+            {
+                if !asked.replace(true) {
+                    still_running::open();
+                }
+                point_to_tray();
+            }
+        }
+    });
+
     let on_menu = use_hook({
         let bridge = bridge.clone();
         let tray = tray.clone();
@@ -410,7 +445,7 @@ pub fn App() -> Element {
 
 /// The tray's eyes, inline, in the colour of the text around them.
 #[component]
-fn Eyes(mood: Mood) -> Element {
+pub fn Eyes(mood: Mood) -> Element {
     rsx! {
         span { class: "eyes", dangerous_inner_html: art::eyes_markup(mood) }
     }

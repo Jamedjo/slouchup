@@ -12,6 +12,7 @@ mod notifier;
 mod screens;
 mod settings;
 mod source;
+mod still_running;
 mod style;
 mod ui;
 #[cfg(windows)]
@@ -82,7 +83,7 @@ fn main() {
         source,
         settings,
         preview.clone(),
-        files,
+        files.clone(),
         Arc::new(move || {
             let _ = snooze.send(Command::Snooze(true));
         }),
@@ -96,6 +97,7 @@ fn main() {
         persist: !args.demo,
         start_with_settings: args.settings,
         preview,
+        files,
     };
 
     let window = WindowBuilder::new()

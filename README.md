@@ -86,8 +86,7 @@ on first run.
 
 ## Platforms
 
-slouchup is developed on Linux and has been run on Windows. CI builds and tests it on macOS too,
-but it hasn't been run as an app there yet.
+SlouchUp runs on Linux, macOS and Windows, and CI builds and tests it on all three.
 
 Every push to `main` packages it for each platform, and a `v*` tag publishes the packages as a
 [release](https://github.com/Jamedjo/slouchup/releases):

@@ -127,6 +127,9 @@ impl Tray {
             Some(tray_icon(shown.mood, shown.theme)),
         );
         let _ = icon.set_tooltip(Some(APP_NAME));
+        // appindicator has no tooltip; panels show its title, which falls back to GLib's app name.
+        #[cfg(target_os = "linux")]
+        glib::set_application_name(APP_NAME);
         Self {
             icon,
             status,

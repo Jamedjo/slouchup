@@ -1,6 +1,6 @@
-# slouchup
+# SlouchUp
 
-slouchup watches your webcam and nudges you the moment you start slouching, so the habit gets caught
+SlouchUp watches your webcam and nudges you the moment you start slouching, so the habit gets caught
 while it's forming rather than at the end of the day.
 
 It finds your face, notes where your eyes sit and how big your face looks when you're sitting
@@ -16,7 +16,7 @@ stand-in who sits up, sinks and leans in, while detection runs on it for real.
 
 ## Using it
 
-slouchup lives in the system tray as a pair of eyes: they look up while you sit well, drop their
+SlouchUp lives in the system tray as a pair of eyes: they look up while you sit well, drop their
 lids while you slouch, close and wonder when they can't see you, and sleep while you've paused
 them. Its menu shows the current status and has:
 
@@ -37,21 +37,21 @@ and shows the eyes to look for in the tray. Turning the camera on starts the cal
 
 <img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
-Closing the camera window leaves slouchup running in the tray. The first close of each run says so
+Closing the camera window leaves SlouchUp running in the tray. The first close of each run says so
 in a small window with Keep watching and Quit buttons, and in a notification.
 
-<img src="docs/screenshots/still-running.png" alt="The window and notification saying slouchup is still running, each with a way to quit" width="520">
+<img src="docs/screenshots/still-running.png" alt="The window and notification saying SlouchUp is still running, each with a way to quit" width="520">
 
 When the camera is off, after Not now on the welcome or while paused, a notification says so
 instead, with Resume in the tray menu to turn it on.
 
-<img src="docs/screenshots/camera-off.png" alt="The notification saying slouchup is in the tray with the camera off" width="400">
+<img src="docs/screenshots/camera-off.png" alt="The notification saying SlouchUp is in the tray with the camera off" width="400">
 
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 
 ### History
 
-The history window charts what slouchup has seen: sitting well, slouching and away for each
+The history window charts what SlouchUp has seen: sitting well, slouching and away for each
 quarter hour of today, then the share of each of the last seven days spent slouching. It keeps
 two weeks, readable only by you, and saves every ten minutes and when you pause or quit. Settings
 can turn it off or clear it. The screenshot is the demo's made-up week.
@@ -61,7 +61,7 @@ can turn it off or clear it. The screenshot is the demo's made-up week.
 ### Calibration game
 
 Each step fills a screen: sit up looking at each of your screens in turn, then slouch, sit up,
-and lean in, with a small view of your camera to check you're in frame. slouchup then sets its
+and lean in, with a small view of your camera to check you're in frame. SlouchUp then sets its
 limits halfway between how you sit and how you slouch.
 
 ![A calibration step filling the left screen, telling the drawn person where to look](docs/screenshots/calibration-game.png)
@@ -93,7 +93,7 @@ Every push to `main` packages it for each platform, and a `v*` tag publishes the
 [release](https://github.com/Jamedjo/slouchup/releases):
 
 - Linux: `slouchup-linux.AppImage`, from `packaging/linux/appimage.sh`
-- Mac: `slouchup-mac.dmg`, holding `slouchup.app` for Apple silicon and Intel, from
+- Mac: `slouchup-mac.dmg`, holding `SlouchUp.app` for Apple silicon and Intel, from
   `packaging/macos/bundle.sh`. macOS only grants camera access to an app bundle.
 - Windows: `slouchup-setup.exe`, from `packaging/windows/setup.ps1` with
   [Velopack](https://velopack.io). It installs for you alone, without questions or an
@@ -116,7 +116,7 @@ A Rust workspace, with the parts that could be useful elsewhere in their own cra
 | [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, camera window and game |
 
 The camera preview reaches the window through Dioxus's in-process protocol rather than a local
-server, so no other program or web page can read the camera through slouchup.
+server, so no other program or web page can read the camera through SlouchUp.
 `vendor/tract-core` carries vectorised kernels that make face detection about four times faster on
 x86; it goes once tract ships its own.
 

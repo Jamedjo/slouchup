@@ -7,10 +7,11 @@ use crate::art::{Mood, Theme};
 use crate::source;
 use crate::ui::Eyes;
 
-const MOODS: [(Mood, &str); 3] = [
+const MOODS: [(Mood, &str); 4] = [
     (Mood::Good, "Sitting tall"),
     (Mood::Bad, "Sinking"),
     (Mood::Idle, "Can't see you"),
+    (Mood::Paused, "Paused"),
 ];
 
 /// Where this desktop shows tray icons.

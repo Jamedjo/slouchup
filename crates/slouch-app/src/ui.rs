@@ -100,7 +100,7 @@ fn snooze_label(snoozed: bool) -> String {
 impl Tray {
     fn new(theme: Theme, paused: bool) -> Self {
         let shown = Shown {
-            mood: Mood::Idle,
+            mood: if paused { Mood::Paused } else { Mood::Idle },
             theme,
             status: "Starting…".into(),
             snoozed: false,

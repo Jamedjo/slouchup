@@ -17,8 +17,8 @@ stand-in who sits up, sinks and leans in, while detection runs on it for real.
 ## Using it
 
 slouchup lives in the system tray as a pair of eyes: they look up while you sit well, drop their
-lids while you slouch, and close when they can't see you or you've paused them. Its menu shows the
-current status and has:
+lids while you slouch, close and wonder when they can't see you, and sleep while you've paused
+them. Its menu shows the current status and has:
 
 - **Show camera** — your camera with the baseline and slouch lines, and how close each measure is
   to its limit.

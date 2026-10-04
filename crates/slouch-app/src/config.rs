@@ -180,7 +180,7 @@ pub fn parse_args() -> Args {
             "--camera" => args.camera = raw.next().and_then(|n| n.parse().ok()),
             "--help" | "-h" => {
                 println!(
-                    "Usage: slouch [--show] [--game] [--settings] [--camera N | --demo] [--test-notification]"
+                    "Usage: slouchup [--show] [--game] [--settings] [--camera N | --demo] [--test-notification]"
                 );
                 std::process::exit(0);
             }

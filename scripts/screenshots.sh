@@ -35,7 +35,7 @@ fi
 work=$2
 out=docs/screenshots
 mkdir -p "$out"
-app=target/release/slouch
+app=target/release/slouchup
 shot() { grim -o HEADLESS-1 "$out/$1.png"; }
 
 # The demo person sits up for 8 seconds, sinks for 5, sits up for 6, then leans in for 5.

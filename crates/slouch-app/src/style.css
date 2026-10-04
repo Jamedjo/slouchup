@@ -134,8 +134,24 @@ html, body {
   font-weight: 600;
 }
 
-.buttons { display: flex; gap: var(--space-2); }
-.app .button { flex: 1; }
+.buttons { display: flex; align-items: center; gap: var(--space-2); }
+.buttons .spacer { flex: 1; }
+/* Opens another window, so it's an icon rather than an action button. */
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.icon-button:hover { background: var(--surface-raised); }
+.icon-button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+.icon-button span, .icon-button svg { display: block; width: 22px; height: 22px; }
 
 /* Calibration game, full screen */
 

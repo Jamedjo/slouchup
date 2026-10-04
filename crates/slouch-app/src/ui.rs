@@ -512,14 +512,31 @@ pub fn App() -> Element {
                 }
             }
             div { class: "buttons",
-                button { class: "button primary", onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
-                button { class: "button", onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
-                button { class: "button", onclick: move |_| { let open = open_history.clone(); open() }, "History" }
-                button { class: "button", onclick: move |_| { let open = open_settings.clone(); open() }, "Settings" }
+                button { class: "button primary", onclick: move |_| bridge.send(Command::Recalibrate), "Recalibrate" }
+                button { class: "button", onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
+                div { class: "spacer" }
+                button {
+                    class: "icon-button",
+                    title: "History",
+                    "aria-label": "History",
+                    onclick: move |_| { let open = open_history.clone(); open() },
+                    span { dangerous_inner_html: HISTORY_ICON }
+                }
+                button {
+                    class: "icon-button",
+                    title: "Settings",
+                    "aria-label": "Settings",
+                    onclick: move |_| { let open = open_settings.clone(); open() },
+                    span { dangerous_inner_html: SETTINGS_ICON }
+                }
             }
         }
     }
 }
+
+/// Line icons in the design system's stroke, coloured by the text around them.
+const HISTORY_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"><path d="M4 20h16M7 16v-4M12 16V6M17 16V9"/></svg>"#;
+const SETTINGS_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.5"/><circle cx="10" cy="17" r="2.5"/></svg>"#;
 
 /// The tray's eyes, inline, in the colour of the text around them.
 #[component]

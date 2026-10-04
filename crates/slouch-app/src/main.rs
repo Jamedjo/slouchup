@@ -10,6 +10,8 @@ mod finder;
 mod frames;
 mod history;
 mod history_window;
+#[cfg(windows)]
+mod installed;
 mod notifier;
 mod onboarding;
 mod screens;
@@ -47,6 +49,8 @@ pub fn quit() {
 }
 
 fn main() {
+    #[cfg(windows)]
+    installed::run_installer_step();
     let args = config::parse_args();
     let cache = cache_dir();
     let files = art::write_files(&cache).expect("writing artwork to the cache directory");

@@ -10,7 +10,7 @@ const TOKENS: &str = include_str!("tokens.css");
 const RULES: &str = include_str!("style.css");
 
 /// Family, weight and file of each typeface the design system uses.
-const FONTS: [(&str, u16, &[u8]); 4] = [
+pub const FONTS: [(&str, u16, &[u8]); 4] = [
     (
         "Fredoka",
         600,

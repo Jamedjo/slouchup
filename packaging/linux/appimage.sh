@@ -22,8 +22,13 @@ inside=${webkit#/usr}
 mkdir -p "$appdir/usr$inside"
 cp -r "$webkit"/WebKit*Process "$webkit"/injected-bundle "$appdir/usr$inside/"
 
+# The tray library is loaded while the app runs, so linuxdeploy can't tell it's needed. The
+# system's copy can need a newer GLib than the one bundled, so it's bundled too.
+tray=$(pkg-config --variable=libdir ayatana-appindicator3-0.1)/libayatana-appindicator3.so.1
+
 linuxdeploy --appdir "$appdir" \
     --executable target/release/slouchup \
+    --library "$tray" \
     --desktop-file "packaging/linux/$id.desktop" \
     --icon-file "target/release/$id.png" \
     --deploy-deps-only "$appdir/usr$inside" \

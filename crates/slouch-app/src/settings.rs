@@ -7,12 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use dioxus::prelude::*;
 use posture::{Settings, Thresholds};
 
+use crate::art::Theme;
 use crate::config::{self, Preferences};
 use crate::engine::{Change, Command};
 use crate::source;
 use crate::ui::Bridge;
-
-const STYLE: &str = include_str!("style.css");
 
 /// What the settings window needs from the app, and a flag saying whether it's open.
 #[derive(Clone)]
@@ -57,8 +56,7 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
     let chosen = preferences();
     let limits = thresholds();
     rsx! {
-        style { {STYLE} }
-        div { class: "settings",
+        div { class: "settings", "data-theme": Theme::Day.name(),
             h1 { "Settings" }
 
             section {
@@ -114,10 +112,12 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     min: 15.0, max: 600.0, step: 15.0, value: chosen.cooldown,
                     onchange: move |v| { preferences.with_mut(|p| p.cooldown = v); send.call(Change::Cooldown(v)) },
                 }
+                p { class: "hint", "Gentle by default. Raise these if it feels naggy." }
             }
 
             div { class: "buttons",
                 button {
+                    class: "button",
                     onclick: move |_| {
                         let defaults = Preferences { camera: preferences().camera, ..Preferences::default() };
                         preferences.set(defaults);

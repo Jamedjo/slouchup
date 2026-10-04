@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crossbeam_channel::Sender;
 use dioxus::desktop::tao::monitor::MonitorHandle;
-use dioxus::desktop::tao::window::Fullscreen;
+use dioxus::desktop::tao::window::{Fullscreen, Icon as WindowIcon, Theme as SystemTheme};
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon};
 use dioxus::desktop::{
@@ -16,13 +16,26 @@ use dioxus::prelude::*;
 use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::StreamExt;
 
-use crate::art::{self, Mood};
+use crate::art::{self, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
-use crate::engine::{Banner, Command, FaceView, LookAt, View};
-use crate::screens;
+use crate::config::APP_NAME;
+use crate::engine::{Banner, Command, LookAt, View};
 use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
+use crate::{screens, style};
 
-const STYLE: &str = include_str!("style.css");
+/// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
+/// painted before the page loads, so it doesn't flash white.
+pub fn window_config(window: WindowBuilder, theme: Theme) -> Config {
+    let size = 128;
+    let icon = WindowIcon::from_rgba(art::rasterise(&art::app_icon_svg(), size, size), size, size)
+        .expect("icon is square");
+    Config::new()
+        .with_menu(None)
+        .with_window(window)
+        .with_icon(icon)
+        .with_background_color(theme.ground())
+        .with_custom_head(style::head())
+}
 
 /// Channels between the UI and the engine, handed to the app through context.
 #[derive(Clone)]
@@ -52,9 +65,9 @@ struct Tray {
 }
 
 impl Tray {
-    fn new() -> Self {
+    fn new(theme: Theme) -> Self {
         let icon = |mood| {
-            Icon::from_rgba(art::rasterise(&art::icon_svg(mood), 64, 64), 64, 64)
+            Icon::from_rgba(art::rasterise(&art::tray_svg(mood, theme), 64, 64), 64, 64)
                 .expect("icon is 64x64")
         };
         let status = MenuItem::with_id("status", "Starting…", false, None);
@@ -77,7 +90,7 @@ impl Tray {
             (Mood::Idle, icon(Mood::Idle)),
         ];
         let icon = dioxus::desktop::trayicon::init_tray_icon(menu, Some(icons[2].1.clone()));
-        let _ = icon.set_tooltip(Some("Slouch"));
+        let _ = icon.set_tooltip(Some(APP_NAME));
         Self {
             icon,
             status,
@@ -102,6 +115,19 @@ impl Tray {
     }
 }
 
+/// The theme of the panel the tray sits on. GNOME's top bar is dark whatever the desktop theme,
+/// and nothing says what a Linux panel looks like, so there it's taken as dark; macOS and Windows
+/// panels follow the system theme.
+fn panel_theme() -> Theme {
+    if cfg!(target_os = "linux") {
+        return Theme::Night;
+    }
+    match window().window.theme() {
+        SystemTheme::Dark => Theme::Night,
+        _ => Theme::Day,
+    }
+}
+
 fn show_main_window() {
     let main = window();
     main.set_visible(true);
@@ -112,7 +138,7 @@ fn show_main_window() {
 pub fn App() -> Element {
     let bridge = use_context::<Bridge>();
     let mut view = use_signal(View::default);
-    let tray = use_hook(|| std::rc::Rc::new(Tray::new()));
+    let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme())));
     let mut paused = use_signal(|| false);
     let monitors = use_signal(Vec::<MonitorHandle>::new);
     let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));
@@ -163,10 +189,11 @@ pub fn App() -> Element {
                     initial: view.peek().settings,
                 },
             );
-            let config = Config::new().with_menu(None).with_window(
+            let config = window_config(
                 WindowBuilder::new()
-                    .with_title("Slouch settings")
-                    .with_inner_size(dioxus::desktop::LogicalSize::new(480.0, 640.0)),
+                    .with_title(format!("{APP_NAME} settings"))
+                    .with_inner_size(dioxus::desktop::LogicalSize::new(480.0, 680.0)),
+                Theme::Day,
             );
             let _ = window().new_window(dom, config);
         }
@@ -267,12 +294,13 @@ pub fn App() -> Element {
                     slot: preview.clone(),
                 },
             );
-            let config = Config::new().with_menu(None).with_window(
+            let config = window_config(
                 WindowBuilder::new()
-                    .with_title("Slouch: calibration game")
+                    .with_title(format!("{APP_NAME}: calibration game"))
                     .with_decorations(false)
                     .with_always_on_top(true)
                     .with_fullscreen(Some(Fullscreen::Borderless(monitor))),
+                Theme::Night,
             );
             // Recorded before it opens, since the view updates again before a window is ready.
             look_here_window.set(Some((screen, None)));
@@ -295,27 +323,16 @@ pub fn App() -> Element {
     let preview = bridge.preview.clone();
     let current = view.read().clone();
     let (frame_width, frame_height) = current.frame_size;
+    let down = |y: f32| y / frame_height * 100.0;
     rsx! {
-        style { {STYLE} }
-        div { class: "app",
+        div { class: "app", "data-theme": Theme::Night.name(),
             div {
                 class: "stage",
-                // As wide as fits both the window's width and its height, so the picture keeps its shape.
-                style: "aspect-ratio: {frame_width} / {frame_height}; width: min(100%, calc((100vh - 72px) * {frame_width} / {frame_height}))",
+                style: "--aspect: {frame_width / frame_height}",
                 CameraView { slot: preview }
-                svg {
-                    class: "overlay",
-                    view_box: "0 0 {frame_width} {frame_height}",
-                    preserve_aspect_ratio: "none",
-                    if let Some((line, limit)) = current.lines {
-                        line { class: "baseline", x1: "0", x2: "{frame_width}", y1: "{line}", y2: "{line}" }
-                        text { class: "baseline-label", x: "8", y: "{line - 6.0}", "baseline" }
-                        line { class: "limit", x1: "0", x2: "{frame_width}", y1: "{limit}", y2: "{limit}" }
-                        text { class: "limit-label", x: "8", y: "{limit + 16.0}", "slouch" }
-                    }
-                    if let Some(face) = &current.face {
-                        FaceMarks { face: face.clone() }
-                    }
+                if let Some((line, limit)) = current.lines {
+                    div { class: "line baseline", style: "top: {down(line)}%", span { "baseline" } }
+                    div { class: "line limit", style: "top: {down(limit)}%", span { "slouch" } }
                 }
                 if let Some(reading) = current.reading {
                     div { class: "bars",
@@ -326,42 +343,37 @@ pub fn App() -> Element {
                 if let Some(banner) = &current.banner {
                     BannerView { banner: banner.clone() }
                 }
-                div { class: "status mood-{current.mood:?}", "{current.status}" }
+                div { class: "status mood-{current.mood:?}",
+                    Eyes { mood: current.mood }
+                    "{current.status}"
+                }
             }
             div { class: "buttons",
-                button { onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
-                button { onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
-                button { onclick: move |_| { let open = open_settings.clone(); open() }, "Settings" }
+                button { class: "button primary", onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
+                button { class: "button", onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
+                button { class: "button", onclick: move |_| { let open = open_settings.clone(); open() }, "Settings" }
             }
         }
     }
 }
 
+/// The tray's eyes, inline, in the colour of the text around them.
 #[component]
-fn FaceMarks(face: FaceView) -> Element {
+fn Eyes(mood: Mood) -> Element {
     rsx! {
-        rect { class: "face", x: "{face.x}", y: "{face.y}", width: "{face.width}", height: "{face.height}" }
-        for [x, y] in face.points {
-            circle { class: "landmark", cx: "{x}", cy: "{y}", r: "3" }
-        }
+        span { class: "eyes", dangerous_inner_html: art::eyes_markup(mood) }
     }
 }
 
 #[component]
 fn Bar(name: &'static str, ratio: f32) -> Element {
     let fill = (ratio.clamp(0.0, 1.5) / 1.5 * 100.0).max(0.0);
-    let level = if ratio <= 0.5 {
-        "ok"
-    } else if ratio <= 1.0 {
-        "near"
-    } else {
-        "over"
-    };
+    let over = if ratio > 1.0 { "over" } else { "" };
     rsx! {
         div { class: "bar",
             span { class: "bar-name", "{name}" }
             div { class: "bar-track",
-                div { class: "bar-fill {level}", style: "width: {fill}%" }
+                div { class: "bar-fill {over}", style: "width: {fill}%" }
                 div { class: "bar-limit" }
             }
         }
@@ -372,15 +384,36 @@ fn Bar(name: &'static str, ratio: f32) -> Element {
 fn BannerView(banner: Banner) -> Element {
     rsx! {
         div { class: "banner",
-            div { class: "banner-title", "{banner.title}" }
+            div { class: "banner-title", RisingUp { text: banner.title } }
             for line in banner.lines {
                 div { class: "banner-line", "{line}" }
             }
             if let Some(progress) = banner.progress {
-                div { class: "progress", div { class: "progress-fill", style: "width: {progress * 100.0}%" } }
+                div { class: "progress", span { style: "width: {progress * 100.0}%" } }
             }
         }
     }
+}
+
+/// Text with its word "up" lifted above the baseline: the brand's one gesture.
+#[component]
+fn RisingUp(text: String) -> Element {
+    match split_at_up(&text) {
+        Some((before, after)) => rsx! {
+            "{before}"
+            span { class: "up", "up" }
+            "{after}"
+        },
+        None => rsx! { "{text}" },
+    }
+}
+
+/// The text either side of the first whole word "up", if there is one.
+fn split_at_up(text: &str) -> Option<(&str, &str)> {
+    let alone = |c: Option<char>| !c.is_some_and(char::is_alphanumeric);
+    text.match_indices("up")
+        .map(|(at, _)| (&text[..at], &text[at + 2..]))
+        .find(|(before, after)| alone(before.chars().next_back()) && alone(after.chars().next()))
 }
 
 /// The current game step, shared with the full-screen window, which has its own virtual DOM.
@@ -393,6 +426,7 @@ impl PartialEq for SharedLookAt {
     }
 }
 
+/// Everything on one vertical line, so your gaze runs from the eyes to the words to yourself.
 #[component]
 fn LookHere(step: SharedLookAt, slot: FrameSlot) -> Element {
     let mut shown = use_signal(LookAt::default);
@@ -410,18 +444,33 @@ fn LookHere(step: SharedLookAt, slot: FrameSlot) -> Element {
     });
     let step = shown.read().clone();
     rsx! {
-        style { {STYLE} }
-        div { class: "look-here",
+        div { class: "look-here", "data-theme": Theme::Night.name(),
             if step.screen.is_some() {
-                div { class: "look-eyes", "👀" }
+                div { class: "look-eyes", dangerous_inner_html: art::looking_up_svg() }
                 div { class: "look-title", "Look here" }
             }
-            div { class: "look-prompt", "{step.prompt}" }
+            div { class: "look-prompt", RisingUp { text: step.prompt } }
             div { class: "look-detail", "{step.detail}" }
-            div { class: "look-progress",
-                div { class: "progress-fill", style: "width: {step.progress * 100.0}%" }
-            }
             div { class: "look-camera", CameraView { slot } }
+            div { class: "progress look-progress",
+                span { style: "width: {step.progress * 100.0}%" }
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_at_up;
+
+    #[test]
+    fn up_rises_only_as_a_whole_word() {
+        assert_eq!(
+            split_at_up("Sit up straight, look at the left screen"),
+            Some(("Sit ", " straight, look at the left screen"))
+        );
+        assert_eq!(split_at_up("Psst, sit up"), Some(("Psst, sit ", "")));
+        assert_eq!(split_at_up("upright, cupboard"), None);
+        assert_eq!(split_at_up("Slouch down, don't lean forward"), None);
     }
 }

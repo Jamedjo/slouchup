@@ -1,154 +1,200 @@
-:root {
-  --bg: #11131a;
-  --panel: #1c1f2b;
-  --text: #f4f4f8;
-  --muted: #a3a7b8;
-  --good: #5adc78;
-  --near: #ffc83c;
-  --bad: #ff5050;
-  --face: #50c8ff;
-  --landmark: #ffe650;
-  --rainbow: linear-gradient(90deg, #ff5050, #ffb43c, #ffe650, #5adc78, #3ca0ff, #c85adc);
-}
+/* The app's rules, on the design system's tokens in tokens.css. Each window's root picks a theme:
+   day for settings, night for the camera window and the calibration game. */
 
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: system-ui, sans-serif;
   overflow: hidden;
 }
+
+[data-theme] {
+  height: 100vh;
+  box-sizing: border-box;
+  background: var(--surface);
+  color: var(--text);
+  font: 400 16px/1.5 var(--font-body);
+}
+
+/* The rising "up": once per surface, with room above it so it isn't clipped. */
+.up { position: relative; top: calc(var(--rise-up) * -1); color: var(--up); }
+
+.button {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font: 600 15px/1 var(--font-body);
+  cursor: pointer;
+}
+.button:hover { background: var(--surface-raised); }
+.button.primary { background: var(--text); border-color: var(--text); color: var(--surface); }
+.button.primary:hover { background: var(--text-muted); border-color: var(--text-muted); }
+.button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.progress { height: 10px; border-radius: 5px; background: var(--track); overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--tomato); }
+
+/* Camera window */
 
 .app {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  height: 100vh;
-  box-sizing: border-box;
+  gap: var(--space-4);
+  padding: var(--space-4);
 }
 
 .stage {
+  /* Height the window keeps for its padding, the buttons and the frame's border. */
+  --chrome: calc(3 * var(--space-4) + 44px + 6px);
   position: relative;
-  margin: 0 auto;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #000;
   flex: none;
+  margin: 0 auto;
+  /* As wide as fits both the window's width and its height, so the picture keeps its shape. */
+  aspect-ratio: var(--aspect);
+  width: min(calc(100% - 6px), calc((100vh - var(--chrome)) * var(--aspect)));
+  border: 3px solid var(--butter);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--ink);
 }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-.stage canvas, .stage .overlay {
+.line { position: absolute; left: 0; right: 0; border-top: 2px solid var(--ink); }
+.line.limit { border-top: 2px dashed var(--tomato-text); }
+.line span {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  left: var(--space-3);
+  bottom: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--butter);
+  font: 600 12px/1.3 var(--font-body);
 }
-
-.overlay line { stroke-width: 2; }
-.overlay .baseline { stroke: var(--good); }
-.overlay .limit { stroke: var(--bad); stroke-dasharray: 8 6; }
-.overlay text { font-size: 14px; }
-.overlay .baseline-label { fill: var(--good); }
-.overlay .limit-label { fill: var(--bad); }
-.overlay .face { fill: none; stroke: var(--face); stroke-width: 1.5; }
-.overlay .landmark { fill: var(--landmark); }
+.line.limit span { top: 6px; bottom: auto; background: var(--tomato-fill); color: var(--ink); }
 
 .bars {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: var(--space-3);
+  right: var(--space-3);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: rgb(0 0 0 / 0.45);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
 }
-
-.bar { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.bar-name { width: 32px; color: var(--muted); }
-.bar-track { position: relative; width: 150px; height: 12px; border-radius: 3px; background: #3a3d4a; overflow: hidden; }
-.bar-fill { height: 100%; }
-.bar-fill.ok { background: var(--good); }
-.bar-fill.near { background: var(--near); }
-.bar-fill.over { background: var(--bad); }
-/* The fill spans 0 to 1.5x the threshold, so the threshold sits two thirds along. */
-.bar-limit { position: absolute; top: 0; bottom: 0; left: 66.7%; width: 2px; background: #fff; }
+.bar { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; line-height: 1.3; }
+.bar-name { width: 32px; color: var(--text-muted); }
+.bar-track { position: relative; width: 150px; height: 10px; border-radius: 5px; background: var(--track); }
+.bar-fill { height: 100%; border-radius: 5px; background: var(--text-muted); }
+.bar-fill.over { background: var(--state-slouch); }
+/* The fill spans 0 to 1.5x the limit, so the limit sits two thirds along. */
+.bar-limit { position: absolute; top: -3px; bottom: -3px; left: 66.7%; width: 2px; border-radius: 1px; background: var(--text); }
 
 .banner {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  padding: 14px 16px;
-  background: rgb(0 0 0 / 0.65);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--ink);
 }
-.banner-title { font-size: 22px; font-weight: 700; color: var(--landmark); }
-.banner-line { margin-top: 4px; font-size: 14px; font-family: ui-monospace, monospace; }
-.progress { margin-top: 10px; height: 8px; border-radius: 4px; background: #3a3d4a; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--rainbow); }
+.banner-title { padding-top: var(--rise-up); font: 600 22px/1.2 var(--font-display); }
+.banner-line { margin-top: var(--space-1); font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.banner .progress { margin-top: var(--space-3); }
 
 .status {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 6px 12px;
-  background: rgb(20 20 28 / 0.85);
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--ink);
+  font-size: 14px;
+  line-height: 1.3;
 }
-.status.mood-Good { border-left: 4px solid var(--good); }
-.status.mood-Bad { border-left: 4px solid var(--bad); }
-.status.mood-Idle, .status.mood-Rainbow { border-left: 4px solid var(--muted); }
+.eyes { display: inline-flex; flex: none; width: 20px; height: 20px; }
+.eyes svg { width: 100%; height: 100%; }
+.mood-Good .eyes { color: var(--state-upright); }
+.mood-Bad .eyes { color: var(--state-slouch); }
+.mood-Idle .eyes { color: var(--state-lost); }
 
-.buttons { display: flex; gap: 8px; }
-.buttons button {
-  flex: 1;
-  padding: 10px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  font-size: 15px;
-  cursor: pointer;
-}
-.buttons button:hover { background: #2a2e3e; }
-.buttons button:first-child { background: var(--rainbow); color: #111; font-weight: 700; }
+.buttons { display: flex; gap: var(--space-2); }
+.app .button { flex: 1; }
+
+/* Calibration game, full screen */
 
 .look-here {
-  height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  background: radial-gradient(circle, #1f2340 0%, #0b0c14 70%);
+  gap: var(--space-4);
+  padding: var(--space-10);
   text-align: center;
+  text-wrap: balance;
 }
-.look-eyes { font-size: 160px; line-height: 1; }
-.look-title {
-  font-size: 72px;
-  font-weight: 800;
-  background: var(--rainbow);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.look-prompt { font-size: 36px; }
-.look-detail { font-size: 28px; color: var(--good); }
-.look-progress { width: min(60vw, 720px); height: 10px; border-radius: 5px; background: #3a3d4a; overflow: hidden; }
+.look-eyes { width: 240px; }
+.look-eyes svg { display: block; width: 100%; }
+.look-title { font: 600 104px/1 var(--font-display); }
+.look-prompt { padding-top: var(--rise-up); font: 600 40px/1.1 var(--font-display); }
+.look-detail { max-width: 900px; font: 600 28px/1.15 var(--font-display); color: var(--text-muted); }
 /* Small enough to check you're in frame without becoming the thing you look at. */
-.look-camera { position: relative; width: 360px; aspect-ratio: 4 / 3; margin-top: 24px; border-radius: 10px; overflow: hidden; opacity: 0.85; }
+.look-camera {
+  position: relative;
+  width: 360px;
+  aspect-ratio: 4 / 3;
+  margin-top: var(--space-2);
+  border: 3px solid var(--butter);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
 .look-camera canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* As wide as the camera frame, border included, directly under it. */
+.look-progress { width: 366px; }
 
-.settings { padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; height: 100vh; box-sizing: border-box; }
-.settings h1 { margin: 0; width: fit-content; font-size: 24px; background: var(--rainbow); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.settings h2 { margin: 0 0 10px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-.settings section { background: var(--panel); border-radius: 10px; padding: 14px 16px; }
-/* Without appearance: none, GTK draws its own light control under our light text. */
-.settings select { appearance: none; width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3d4a; background-color: var(--bg); color: var(--text); font-size: 14px; }
-.settings .hint { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
-.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-bottom: 12px; font-size: 14px; }
-.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--good); }
-.slider-value { color: var(--good); font-variant-numeric: tabular-nums; }
+/* Settings */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+.settings h1 { margin: 0; font: 600 40px/1.1 var(--font-display); }
+.settings section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.settings h2 { margin: 0; font: 600 12px/1.3 var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; }
+/* Without appearance: none, GTK draws its own control, so the arrow is drawn back in. */
+.settings select {
+  appearance: none;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 40px 0 var(--space-3);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised) no-repeat right var(--space-3) center / 18px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322201C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color: var(--text);
+  font: 400 14px var(--font-body);
+}
+.settings .button { align-self: flex-start; }
+.hint { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); font-size: 14px; }
+.slider-label { font-weight: 600; }
+.slider-value { color: var(--state-slouch); font-weight: 600; font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; width: 100%; min-height: 28px; margin: 0; accent-color: var(--tomato); }

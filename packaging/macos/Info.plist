@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Slouch</string>
+	<string>slouchup</string>
 	<key>CFBundleDisplayName</key>
-	<string>Slouch</string>
+	<string>slouchup</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.jamedjo.slouchup</string>
 	<key>CFBundleExecutable</key>
@@ -19,7 +19,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Slouch watches your posture through the webcam. Frames never leave your computer.</string>
+	<string>slouchup watches your posture through the webcam. Everything happens on your computer.</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>

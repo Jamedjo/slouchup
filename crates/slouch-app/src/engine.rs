@@ -11,10 +11,10 @@ use serde::Serialize;
 
 use crate::art::{Files, Mood};
 use crate::camera_view::FrameSlot;
-use crate::config;
+use crate::config::{self, APP_NAME};
 use crate::finder::FaceFinder;
 use crate::frames;
-use crate::notifier::{Notifier, escape};
+use crate::notifier::Notifier;
 use crate::source::{Capture, Source};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
@@ -30,6 +30,7 @@ const CAMERA_LOST: Duration = Duration::from_secs(4);
 const RETRY_CAMERA: Duration = Duration::from_secs(5);
 /// Laptop lids tilt rarely, so the background needn't be checked every frame.
 const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
+const CANT_SEE_YOU: &str = "I can't see you right now.";
 
 pub enum Command {
     Recalibrate,
@@ -59,7 +60,6 @@ pub struct View {
     pub mood: Mood,
     pub status: String,
     pub frame_size: (f32, f32),
-    pub face: Option<FaceView>,
     pub reading: Option<Reading>,
     pub settings: Settings,
     /// Where the baseline eye line and the slouch line currently fall.
@@ -75,7 +75,6 @@ impl Default for View {
             mood: Mood::Idle,
             status: "Starting…".into(),
             frame_size: (640.0, 480.0),
-            face: None,
             reading: None,
             settings: Settings::default(),
             lines: None,
@@ -93,15 +92,6 @@ pub struct LookAt {
     pub prompt: String,
     pub detail: String,
     pub progress: f32,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct FaceView {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-    pub points: [[f32; 2]; 5],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -144,18 +134,6 @@ impl Observation {
             l.left_mouth,
             drift * self.height as f32,
         ))
-    }
-
-    fn face_view(&self) -> Option<FaceView> {
-        let f = self.face?;
-        let s = self.scale;
-        Some(FaceView {
-            x: f.x * s,
-            y: f.y * s,
-            width: f.width * s,
-            height: f.height * s,
-            points: f.landmarks.points().map(|[x, y]| [x * s, y * s]),
-        })
     }
 }
 
@@ -239,11 +217,11 @@ impl Engine {
                 if std::panic::catch_unwind(run).is_err() {
                     let (notifier, events) = crashed;
                     notifier.info(
-                        "Slouch stopped watching 😿",
-                        "Something went wrong; please restart it.",
+                        &format!("{APP_NAME} stopped watching"),
+                        "Something went wrong. Restart it to carry on.",
                     );
                     let _ = events.unbounded_send(View {
-                        status: "Stopped after an error; please restart".into(),
+                        status: "Stopped after an error. Restart to carry on.".into(),
                         ..View::default()
                     });
                 }
@@ -288,7 +266,6 @@ impl Engine {
             }
             if self.paused {
                 self.set_status(Mood::Idle, "Paused");
-                self.view.face = None;
                 self.publish();
                 std::thread::sleep(WATCH_INTERVAL);
                 continue;
@@ -299,7 +276,7 @@ impl Engine {
             }
             if self.tracker.is_none() {
                 if !self.calibrate(announce) {
-                    self.set_status(Mood::Idle, "Couldn't see a face to calibrate");
+                    self.set_status(Mood::Idle, "I couldn't see you to calibrate");
                     self.publish();
                     std::thread::sleep(RETRY_CALIBRATION);
                 }
@@ -321,7 +298,7 @@ impl Engine {
                 if self.paused || !self.camera_ready() {
                     self.notifier.info(
                         "Calibration game",
-                        "The game needs the camera, so resume Slouch first.",
+                        &format!("The game needs the camera, so resume {APP_NAME} first."),
                     );
                 } else if !self.play_game(&screens) && self.tracker.is_none() {
                     *announce = true;
@@ -427,8 +404,7 @@ impl Engine {
                 self.set_status(Mood::Idle, format!("No camera: {error}"));
                 self.publish();
                 if !std::mem::replace(&mut self.told_no_camera, true) {
-                    self.notifier
-                        .info("Slouch can't see a camera 😿", &escape(&error));
+                    self.notifier.info("I can't find a camera", &error);
                 }
                 self.reopen_at = Some(Instant::now() + RETRY_CAMERA);
                 false
@@ -497,7 +473,7 @@ impl Engine {
         let (mood, status) = match update.state {
             State::Good => (Mood::Good, "Posture good".to_string()),
             State::Bad(problem) => (Mood::Bad, problem.to_string()),
-            State::Away => (Mood::Idle, "No face in view".to_string()),
+            State::Away => (Mood::Idle, CANT_SEE_YOU.to_string()),
         };
         self.set_status(mood, status);
         match update.action {
@@ -515,19 +491,18 @@ impl Engine {
         let line = (baseline.eye_y + drift_px) * seen.scale;
         let limit = line + self.settings.thresholds.drop * baseline.size * seen.scale;
         self.view.lines = Some((line, limit));
-        self.view.face = seen.face_view();
         self.view.reading = update.reading;
         self.publish();
     }
 
     fn calibrate(&mut self, announce: bool) -> bool {
-        self.set_status(Mood::Idle, "Calibrating — sit up nicely");
+        self.set_status(Mood::Idle, "Calibrating: sit up straight and hold it…");
         self.view.lines = None;
         self.view.reading = None;
         if announce {
             self.notifier.info(
-                "Calibrating 📏",
-                "<span foreground=\"#ffd75f\">Sit up nicely for a few seconds…</span>",
+                "Sit up straight",
+                "Hold it for a few seconds while I learn how you sit.",
             );
         }
         let mut postures = Vec::new();
@@ -543,7 +518,6 @@ impl Engine {
                 postures.push(posture);
                 reference = Some(CameraDrift::new(seen.grey(), seen.person()));
             }
-            self.view.face = seen.face_view();
             self.publish();
         }
         let Some(reference) = reference else {
@@ -559,10 +533,8 @@ impl Engine {
             baseline.size
         );
         self.start_tracking(baseline, reference);
-        self.notifier.info(
-            "Slouch is watching 👀",
-            "<span foreground=\"#5fffaf\">Calibrated. Stay tall!</span>",
-        );
+        self.notifier
+            .info(&format!("{APP_NAME} is watching"), "Calibrated just now.");
         true
     }
 
@@ -637,11 +609,10 @@ impl Engine {
                     detail: subtitle.clone(),
                     progress,
                 });
-                self.view.face = seen.face_view();
                 self.view.status = if seen.face.is_some() {
                     "Calibration game"
                 } else {
-                    "No face!"
+                    CANT_SEE_YOU
                 }
                 .into();
                 self.publish();
@@ -682,10 +653,10 @@ impl Engine {
 
         let (Some(result), Some(drift)) = (result, drift) else {
             self.view.look_at = None;
-            self.set_status(Mood::Idle, "The game didn't see your face enough");
+            self.set_status(Mood::Idle, "I couldn't see you in every step");
             self.view.banner = Some(Banner {
                 title: "Try again".into(),
-                lines: vec!["Couldn't see your face in every step".into()],
+                lines: vec!["I couldn't see you in every step of the game.".into()],
                 progress: None,
             });
             self.results_until = Some(Instant::now() + RESULTS_SHOWN);
@@ -707,9 +678,9 @@ impl Engine {
         let limits = self.settings.thresholds;
         self.view.look_at = Some(LookAt {
             screen: None,
-            prompt: "Calibrated ✨".into(),
+            prompt: "Calibrated".into(),
             detail: format!(
-                "Nagging when your eyes drop {:.2} face heights or your face grows {:.0}%",
+                "I'll nudge you when your eyes drop {:.2} face heights or your face grows {:.0}%.",
                 limits.drop,
                 limits.lean * 100.0
             ),

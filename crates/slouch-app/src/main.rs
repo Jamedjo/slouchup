@@ -12,12 +12,14 @@ mod notifier;
 mod screens;
 mod settings;
 mod source;
+mod style;
 mod ui;
 
 use std::sync::{Arc, Mutex};
 
-use dioxus::desktop::{Config, WindowBuilder, WindowCloseBehaviour, icon_from_memory};
+use dioxus::desktop::{WindowBuilder, WindowCloseBehaviour};
 
+use crate::art::Theme;
 use crate::camera_view::FrameSlot;
 use crate::config::{APP_NAME, cache_dir};
 use crate::engine::Engine;
@@ -89,10 +91,7 @@ fn main() {
         .with_title(APP_NAME)
         .with_visible(args.show)
         .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 600.0));
-    let desktop = Config::new()
-        .with_window(window)
-        .with_menu(None)
-        .with_icon(icon_from_memory(&art::icon_png(art::Mood::Rainbow, 128)).expect("icon decodes"))
+    let desktop = ui::window_config(window, Theme::Night)
         .with_close_behaviour(WindowCloseBehaviour::WindowHides)
         .with_exits_when_last_window_closes(false);
     dioxus::LaunchBuilder::desktop()

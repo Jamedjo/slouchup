@@ -1,6 +1,6 @@
-# Slouch
+# slouchup
 
-Slouch watches your webcam and nudges you the moment you start slouching, so the habit gets caught
+slouchup watches your webcam and nudges you the moment you start slouching, so the habit gets caught
 while it's forming rather than at the end of the day.
 
 It finds your face, notes where your eyes sit and how big your face looks when you're sitting
@@ -16,14 +16,15 @@ stand-in who sits up, sinks and leans in, while detection runs on it for real.
 
 ## Using it
 
-Slouch lives in the system tray. The icon is green while you sit well, red while you slouch, and
-grey when it can't see you or is paused. Its menu shows the current status and has:
+slouchup lives in the system tray as a pair of eyes: they look up while you sit well, drop their
+lids while you slouch, and close when they can't see you or you've paused them. Its menu shows the
+current status and has:
 
-- **Show camera** — your camera with the face it found, the baseline and slouch lines, and how close
-  each measure is to its limit.
+- **Show camera** — your camera with the baseline and slouch lines, and how close each measure is
+  to its limit.
 - **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
   your screens, slouching, and leaning in, then set the limits halfway between. It runs by itself
-  the first time Slouch starts.
+  the first time slouchup starts.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
 - **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
 - **Pause** and **Quit**.
@@ -33,7 +34,7 @@ grey when it can't see you or is paused. Its menu shows the current status and h
 ### Calibration game
 
 Each step fills a screen: sit up looking at each of your screens in turn, then slouch, sit up,
-and lean in, with a small view of your camera to check you're in frame. Slouch then sets its
+and lean in, with a small view of your camera to check you're in frame. slouchup then sets its
 limits halfway between how you sit and how you slouch.
 
 ![A calibration step filling the left screen, telling the drawn person where to look](docs/screenshots/calibration-game.png)
@@ -55,7 +56,7 @@ The limits are saved in `~/.config/slouch/thresholds.json`, other settings in
 
 ## Platforms
 
-Linux is where Slouch is developed and used. CI builds and tests it on macOS and Windows too, but
+Linux is where slouchup is developed and used. CI builds and tests it on macOS and Windows too, but
 it hasn't been run as an app there yet. `packaging/macos/bundle.sh` makes an app bundle, which macOS
 needs before it allows camera access.
 
@@ -71,13 +72,16 @@ A Rust workspace, with the parts that could be useful elsewhere in their own cra
 | [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, camera window and game |
 
 The camera preview reaches the window through Dioxus's in-process protocol rather than a local
-server, so no other program or web page can read the camera through Slouch.
+server, so no other program or web page can read the camera through slouchup.
 `vendor/tract-core` carries vectorised kernels that make face detection about four times faster on
 x86; it goes once tract ships its own.
 
 The face model is [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
 from the OpenCV model zoo (MIT). The camera preview script comes from
-[dioxus-cameras](https://github.com/matthewjberger/cameras).
+[dioxus-cameras](https://github.com/matthewjberger/cameras). The typefaces are
+[Fredoka](https://github.com/hafontia/Fredoka-One) and [Figtree](https://github.com/erikdkennedy/figtree)
+(SIL Open Font License, in [`crates/slouch-app/fonts`](crates/slouch-app/fonts)), built in so the
+app never fetches fonts.
 
 To refresh the screenshots, run `scripts/screenshots.sh`; it uses a headless sway session, so it
 doesn't touch your desktop.

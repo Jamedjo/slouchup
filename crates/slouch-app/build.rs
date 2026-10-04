@@ -20,7 +20,7 @@ fn main() {
     let mut resource = winresource::WindowsResource::new();
     resource
         .set_icon(icon.to_str().expect("OUT_DIR is UTF-8"))
-        .set("FileDescription", "slouchup")
-        .set("ProductName", "slouchup");
+        .set("FileDescription", "SlouchUp")
+        .set("ProductName", "SlouchUp");
     resource.compile().expect("embedding the app icon");
 }

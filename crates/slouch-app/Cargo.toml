@@ -29,6 +29,9 @@ ico = "0.5"
 resvg = { version = "0.45", default-features = false }
 winresource = "0.1"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+glib = "0.18"
+
 [target.'cfg(windows)'.dependencies]
 # The release workflow installs vpk, which builds the installer, at the version locked for this.
 velopack = "1.2.161"

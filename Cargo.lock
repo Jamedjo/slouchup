@@ -5294,6 +5294,7 @@ dependencies = [
  "futures-channel",
  "futures-timer",
  "futures-util",
+ "glib",
  "ico",
  "notify-rust",
  "posture",

@@ -8,7 +8,7 @@ export const WIDTH = 1200;
 export const HEIGHT = 630;
 export const HEADLINE = "Better posture without thinking about it.";
 export const SUBHEAD = "One gentle nudge when you start to slouch, then it leaves you alone.";
-export const ALT = `slouchup. ${HEADLINE} Beside it, a nudge: Psst, sit up.`;
+export const ALT = `SlouchUp. ${HEADLINE} Beside it, a nudge: Psst, sit up.`;
 
 type Style = Record<string, string | number>;
 

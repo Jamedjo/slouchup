@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 pub const APP_ID: &str = "slouchup";
 /// The settings directory's name before the rename, which the Python version still uses.
 const OLD_ID: &str = "slouch";
-/// The product name, always written lowercase.
-pub const APP_NAME: &str = "slouchup";
+/// The product name as people see it. Files, folders and IDs keep the lowercase `APP_ID`.
+pub const APP_NAME: &str = "SlouchUp";
 /// Windows names app folders by publisher, then app.
 const PUBLISHER: &str = "We Are Frames";
 

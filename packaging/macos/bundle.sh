@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds target/release/slouchup.app for Apple silicon and Intel Macs, and slouchup-mac.dmg to
+# Builds target/release/SlouchUp.app for Apple silicon and Intel Macs, and slouchup-mac.dmg to
 # install it from. macOS only grants camera access to a bundle that says why it wants it, and
 # LSUIElement keeps a tray app out of the Dock. Run on a Mac from the repository root.
 set -e
@@ -7,7 +7,7 @@ for target in aarch64-apple-darwin x86_64-apple-darwin; do
     cargo build --release -p slouchup --target "$target"
 done
 
-app=target/release/slouchup.app
+app=target/release/SlouchUp.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 lipo -create -output "$app/Contents/MacOS/slouchup" \
@@ -32,4 +32,4 @@ rm -rf "$staging"
 mkdir -p "$staging"
 cp -R "$app" "$staging/"
 ln -s /Applications "$staging/Applications"
-hdiutil create -volname slouchup -srcfolder "$staging" -ov -format UDZO target/release/slouchup-mac.dmg
+hdiutil create -volname SlouchUp -srcfolder "$staging" -ov -format UDZO target/release/slouchup-mac.dmg

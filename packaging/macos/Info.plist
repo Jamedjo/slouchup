@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>slouchup</string>
+	<string>SlouchUp</string>
 	<key>CFBundleDisplayName</key>
-	<string>slouchup</string>
+	<string>SlouchUp</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.weareframes.slouchup</string>
 	<key>CFBundleExecutable</key>
@@ -21,7 +21,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
 	<key>NSCameraUsageDescription</key>
-	<string>slouchup watches your posture through the webcam. Everything happens on your computer.</string>
+	<string>SlouchUp watches your posture through the webcam. Everything happens on your computer.</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>

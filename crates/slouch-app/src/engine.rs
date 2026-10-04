@@ -442,6 +442,7 @@ impl Engine {
             min_gap: self.settings.min_gap,
             cooldown: self.settings.cooldown,
             keep_history: self.recording,
+            ..config::load_preferences()
         };
         if self.persist
             && let Err(error) = config::save_preferences(&preferences)

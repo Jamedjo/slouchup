@@ -94,7 +94,9 @@ Every push to `main` packages it for each platform, and a `v*` tag publishes the
 
 - Linux: `slouchup-x86_64.AppImage`, from `packaging/linux/appimage.sh` with Velopack. It looks
   for a newer release every few hours, downloads it in the background, and replaces itself with it
-  when you quit, or else the next time it starts.
+  when you quit, or else the next time it starts. It adds itself to the app launcher the first time
+  it runs, unless AppImageLauncher or Gear Lever has added it already. Removing it from your
+  launcher is respected.
 - Mac: `slouchup-mac.dmg`, holding `SlouchUp.app` for Apple silicon and Intel, from
   `packaging/macos/bundle.sh`. macOS only grants camera access to an app bundle.
 - Windows: `slouchup-setup.exe`, from `packaging/windows/setup.ps1` with

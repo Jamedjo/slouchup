@@ -156,6 +156,9 @@ pub struct Preferences {
     pub cooldown: f64,
     /// Whether the history window's record is kept. Turning it off stops recording.
     pub keep_history: bool,
+    /// Whether the AppImage has added itself to the app launcher before, so an entry the user
+    /// removed isn't added back.
+    pub added_to_launcher: bool,
 }
 
 impl Default for Preferences {
@@ -167,6 +170,7 @@ impl Default for Preferences {
             min_gap: defaults.min_gap,
             cooldown: defaults.cooldown,
             keep_history: true,
+            added_to_launcher: false,
         }
     }
 }

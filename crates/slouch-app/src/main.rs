@@ -12,6 +12,8 @@ mod history;
 mod history_window;
 #[cfg(any(windows, target_os = "linux"))]
 mod installed;
+#[cfg(target_os = "linux")]
+mod launcher;
 mod notifier;
 mod onboarding;
 mod screens;
@@ -90,6 +92,12 @@ fn main() {
         && let Err(error) = config::adopt_old_settings()
     {
         tracing::warn!("couldn't copy settings from before the rename: {error}");
+    }
+    #[cfg(target_os = "linux")]
+    if !args.demo
+        && let Some(launcher) = launcher::Launcher::from_env()
+    {
+        launcher.start();
     }
     let preferences = config::load_preferences();
     let (source, settings) = if args.demo {

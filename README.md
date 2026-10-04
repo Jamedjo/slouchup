@@ -47,10 +47,10 @@ Tilting a laptop lid is told apart from slouching by watching the background mov
 
 ```sh
 cargo build --release
-target/release/slouch            # tray only
-target/release/slouch --show     # with the camera window open
-target/release/slouch --demo     # with the drawn stand-in instead of a webcam
-target/release/slouch --settings # with the settings window open
+target/release/slouchup            # tray only
+target/release/slouchup --show     # with the camera window open
+target/release/slouchup --demo     # with the drawn stand-in instead of a webcam
+target/release/slouchup --settings # with the settings window open
 ```
 
 The limits are saved in `~/.config/slouchup/thresholds.json`, other settings in

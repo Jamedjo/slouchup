@@ -5124,7 +5124,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "slouch"
+name = "slouchup"
 version = "0.1.0"
 dependencies = [
  "base64",

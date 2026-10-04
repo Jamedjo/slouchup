@@ -49,7 +49,7 @@ const others = (id: string) => platforms.filter((platform) => platform.id !== id
     }
   </div>
   <footer>
-    <span>© {new Date().getFullYear()} James Edwards-Jones</span>
+    <span>Made with love by <a href="https://weareframes.dev">Frames</a></span>
     <span>Made for people who sit too long. Like us.</span>
   </footer>
 </Band>
@@ -64,4 +64,5 @@ const others = (id: string) => platforms.filter((platform) => platform.id !== id
   .download:not([data-platform="mac"]) [data-for="mac"],
   .download:not([data-platform="linux"]) [data-for="linux"] { display: none; }
   footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid #4A463E; font-size: 14px; color: var(--text-muted); }
+  footer a { color: var(--butter); }
 </style>

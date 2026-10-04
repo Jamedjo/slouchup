@@ -11,11 +11,34 @@ pub const APP_ID: &str = "slouchup";
 const OLD_ID: &str = "slouch";
 /// The product name, always written lowercase.
 pub const APP_NAME: &str = "slouchup";
+/// Windows names app folders by publisher, then app.
+const PUBLISHER: &str = "We Are Frames";
 
 /// Per-user cache directory. Never a shared temporary one, where other users could plant files.
 pub fn cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .expect("a home directory for the cache")
+    if cfg!(windows) {
+        windows_dir()
+    } else {
+        dirs::cache_dir()
+            .expect("a home directory for the cache")
+            .join(APP_ID)
+    }
+}
+
+fn settings_dir() -> PathBuf {
+    if cfg!(windows) {
+        windows_dir()
+    } else {
+        config_dir(APP_ID)
+    }
+}
+
+/// Settings and cache together. Never `%LocalAppData%\slouchup`, where the installer puts the app
+/// and which uninstalling empties.
+fn windows_dir() -> PathBuf {
+    dirs::data_local_dir()
+        .expect("a home directory for app data")
+        .join(PUBLISHER)
         .join(APP_ID)
 }
 
@@ -46,19 +69,20 @@ fn config_dir(id: &str) -> PathBuf {
 }
 
 fn config_file(name: &str) -> PathBuf {
-    config_dir(APP_ID).join(name)
+    settings_dir().join(name)
 }
 
 const SETTINGS_FILES: [&str; 2] = ["thresholds.json", "settings.json"];
 
 /// Copy settings saved under the old name, once, so the rename doesn't lose a calibration.
 pub fn adopt_old_settings() -> std::io::Result<()> {
-    copy_settings(&config_dir(OLD_ID), &config_dir(APP_ID))
+    copy_settings(&config_dir(OLD_ID), &settings_dir())
 }
 
-/// Copy the settings files from `old` into `new`, unless `new` already exists.
+/// Copy the settings files from `old` into `new`, unless `new` already has settings. On Windows,
+/// `new` also holds the cache, so it's there before any settings are.
 fn copy_settings(old: &Path, new: &Path) -> std::io::Result<()> {
-    if new.exists() || !old.exists() {
+    if SETTINGS_FILES.iter().any(|name| new.join(name).exists()) || !old.exists() {
         return Ok(());
     }
     std::fs::create_dir_all(new)?;
@@ -232,6 +256,8 @@ mod tests {
         let (old, new) = (root.join("old"), root.join("new"));
         std::fs::create_dir_all(&old).unwrap();
         std::fs::write(old.join("thresholds.json"), "old").unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::fs::write(new.join("lock"), "").unwrap();
 
         copy_settings(&old, &new).unwrap();
         assert_eq!(
@@ -248,5 +274,13 @@ mod tests {
         );
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_files_are_kept_out_of_the_install_folder() {
+        let install = dirs::data_local_dir().unwrap().join(APP_ID);
+        assert!(!settings_dir().starts_with(&install));
+        assert!(!cache_dir().starts_with(&install));
     }
 }

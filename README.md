@@ -98,7 +98,9 @@ Every push to `main` packages it for each platform, and a `v*` tag publishes the
 - Windows: `slouchup-setup.exe`, from `packaging/windows/setup.ps1` with
   [Velopack](https://velopack.io). It installs for you alone, without questions or an
   administrator, into `%LOCALAPPDATA%\slouchup`, and adds SlouchUp to the Start menu and to
-  Apps & features. Uninstalling keeps your settings, so a reinstall picks them up.
+  Apps & features. Uninstalling keeps your settings, so a reinstall picks them up. Once
+  installed, SlouchUp looks for a newer release every few hours, downloads it in the background,
+  and installs it when you quit, or else the next time it starts.
 
 The packages aren't signed, so macOS and Windows warn before opening them the first time.
 

@@ -39,6 +39,8 @@ static QUIT: std::sync::OnceLock<crossbeam_channel::Sender<Command>> = std::sync
 /// End the app from anywhere: the engine saves the history and exits, and if it's stuck or
 /// gone, the app exits anyway shortly after.
 pub fn quit() {
+    #[cfg(windows)]
+    installed::update_on_quit();
     if let Some(commands) = QUIT.get() {
         let _ = commands.send(Command::Quit);
     }
@@ -70,6 +72,11 @@ fn main() {
             }
         }
     };
+
+    #[cfg(windows)]
+    if !args.demo {
+        installed::keep_up_to_date();
+    }
 
     let (command_tx, command_rx) = crossbeam_channel::unbounded();
     // The first run keeps the camera off until its welcome says to turn it on.

@@ -177,6 +177,16 @@ fn panel_theme() -> Theme {
 /// How often to check whether the panel has changed theme, say for night mode.
 const PANEL_CHECK: Duration = Duration::from_secs(2);
 
+/// `say`, but only the first time it's called, so a notice comes once a run.
+fn once(say: impl Fn() + 'static) -> std::rc::Rc<dyn Fn()> {
+    let said = std::cell::Cell::new(false);
+    std::rc::Rc::new(move || {
+        if !said.replace(true) {
+            say();
+        }
+    })
+}
+
 fn show_main_window() {
     let main = window();
     main.set_visible(true);
@@ -309,22 +319,22 @@ pub fn App() -> Element {
         }
     });
 
-    // Closing the camera window only hides it, so the first close says where the app went: in a
-    // window that can quit it, and in a notification.
-    let point_to_tray = use_hook({
+    // Closing the camera window, or putting off the welcome, only hides it, so the first time says
+    // where the app went, and whether it's watching.
+    let say_still_running = use_hook(|| {
         let files = bridge.files.clone();
-        let told = std::rc::Rc::new(std::cell::Cell::new(false));
-        move || {
-            move || {
-                if !told.replace(true) {
-                    notifier::still_running(&files);
-                }
-            }
-        }
+        once(move || {
+            still_running::open();
+            notifier::still_running(&files);
+        })
+    });
+    let say_camera_off = use_hook(|| {
+        let files = bridge.files.clone();
+        once(move || notifier::camera_off(&files))
     });
     use_wry_event_handler({
         let main = window().id();
-        let asked = std::rc::Rc::new(std::cell::Cell::new(false));
+        let say_camera_off = say_camera_off.clone();
         move |event, _| {
             if let Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -333,10 +343,11 @@ pub fn App() -> Element {
             } = event
                 && *window_id == main
             {
-                if !asked.replace(true) {
-                    still_running::open();
+                if paused() {
+                    say_camera_off();
+                } else {
+                    say_still_running();
                 }
-                point_to_tray();
             }
         }
     });
@@ -360,7 +371,10 @@ pub fn App() -> Element {
             start_game();
         }
     };
-    let not_now = move |()| window().set_visible(false);
+    let not_now = move |()| {
+        window().set_visible(false);
+        say_camera_off();
+    };
 
     let on_menu = use_hook({
         let bridge = bridge.clone();

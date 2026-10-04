@@ -16,6 +16,17 @@ Remove-Item -Recurse -Force $app, $out -ErrorAction Ignore
 New-Item -ItemType Directory $app | Out-Null
 Copy-Item target/release/slouchup.exe $app
 
+# The latest release's package, so vpk can make a delta from it, which installed copies download
+# instead of the whole app. It's left out when it isn't older, as for builds of main before the
+# version is raised, since vpk refuses to pack a version that isn't newer than the ones beside it.
+$token = if ($env:GITHUB_TOKEN) { "--token", $env:GITHUB_TOKEN } else { @() }
+vpk download github --repoUrl https://github.com/Jamedjo/slouchup --outputDir $out @token
+$released = @(Get-ChildItem $out -Filter *.nupkg -ErrorAction Ignore)
+$older = @($released | Where-Object {
+    [semver]($_.Name -replace '^slouchup-(.+)-full\.nupkg$', '$1') -lt [semver]$version
+})
+$released | Where-Object { $_ -notin $older } | Remove-Item
+
 # The Start menu shortcut shares the toast sender's app ID, so Windows groups the two as one app.
 # There's deliberately no shortcut to start at login: the camera light would come on at every
 # login, and the camera would be held from other apps.
@@ -24,3 +35,5 @@ vpk pack --packId slouchup --packVersion $version --packDir $app --mainExe slouc
     --icon target/release/slouchup.ico --splashImage target/release/slouchup-splash.png --splashProgressColor "#E8553A" --aumid dev.weareframes.slouchup --shortcuts StartMenuRoot `
     --noPortable --outputDir $out
 Move-Item "$out/slouchup-win-Setup.exe" "$out/slouchup-setup.exe"
+# Already on the release it came from.
+$older | Remove-Item

@@ -31,6 +31,11 @@ current status and has:
   has a Snooze button too.
 - **Pause** and **Quit**.
 
+Closing the camera window leaves slouchup running in the tray; the first close of each run says so
+in a notification with a Quit button.
+
+<img src="docs/screenshots/still-running.png" alt="The notification saying slouchup is still running, with a Quit button" width="420">
+
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
 
 ### Calibration game

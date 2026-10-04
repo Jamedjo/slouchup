@@ -8,6 +8,8 @@ mod demo;
 mod engine;
 mod finder;
 mod frames;
+mod history;
+mod history_window;
 mod notifier;
 mod onboarding;
 mod screens;
@@ -26,9 +28,23 @@ use dioxus::desktop::{WindowBuilder, WindowCloseBehaviour};
 use crate::art::Theme;
 use crate::camera_view::FrameSlot;
 use crate::config::{APP_NAME, cache_dir};
-use crate::engine::{Command, Engine};
+use crate::engine::{Command, Engine, Links};
 use crate::notifier::Notifier;
 use crate::source::Source;
+
+static QUIT: std::sync::OnceLock<crossbeam_channel::Sender<Command>> = std::sync::OnceLock::new();
+
+/// End the app from anywhere: the engine saves the history and exits, and if it's stuck or
+/// gone, the app exits anyway shortly after.
+pub fn quit() {
+    if let Some(commands) = QUIT.get() {
+        let _ = commands.send(Command::Quit);
+    }
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::process::exit(0);
+    });
+}
 
 fn main() {
     let args = config::parse_args();
@@ -85,23 +101,31 @@ fn main() {
         )
     };
     let snooze = command_tx.clone();
-    Engine::start(
-        source,
-        settings,
-        preview.clone(),
-        files.clone(),
-        Arc::new(move || {
+    let history = Arc::new(Mutex::new(if args.demo {
+        demo::sample_history(chrono::Local::now())
+    } else {
+        config::load_history()
+    }));
+    let links = Links {
+        preview: preview.clone(),
+        files: files.clone(),
+        on_snooze: Arc::new(move || {
             let _ = snooze.send(Command::Snooze(true));
         }),
-        view_tx,
-        command_rx,
-    );
+        history: history.clone(),
+        events: view_tx,
+        commands: command_rx,
+    };
+    Engine::start(source, settings, links);
+    let _ = QUIT.set(command_tx.clone());
     let bridge = ui::Bridge {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),
         start_with_game: args.game,
         persist: !args.demo,
         start_with_settings: args.settings,
+        start_with_history: args.history,
+        history,
         preview,
         onboarding,
         files,

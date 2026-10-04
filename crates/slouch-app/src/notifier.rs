@@ -155,7 +155,7 @@ pub fn still_running(files: &Files) {
             std::thread::spawn(move || {
                 let _ = handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
                     if matches!(response, notify_rust::NotificationResponse::Action(key) if key == QUIT) {
-                        std::process::exit(0);
+                        crate::quit();
                     }
                 });
             });

@@ -25,6 +25,8 @@ current status and has:
 - **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
   your screens, slouching, and leaning in, then set the limits halfway between.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
+- **History** — how you've sat today, quarter hour by quarter hour, and how much of each of the
+  last seven days you spent slouching.
 - **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
 - **Snooze for 30 minutes** — no nudges for a while, though it keeps watching. The nudge itself
   has a Snooze button too.
@@ -41,6 +43,15 @@ in a small window with Keep watching and Quit buttons, and in a notification.
 <img src="docs/screenshots/still-running.png" alt="The window and notification saying slouchup is still running, each with a way to quit" width="520">
 
 <img src="docs/screenshots/settings.png" alt="The settings window" width="480">
+
+### History
+
+The history window charts what slouchup has seen: sitting well, slouching and away for each
+quarter hour of today, then the share of each of the last seven days spent slouching. It keeps
+two weeks, readable only by you, and saves every ten minutes and when you pause or quit. Settings
+can turn it off or clear it. The screenshot is the demo's made-up week.
+
+![Today's posture in quarter hours, and slouching per day for the last week](docs/screenshots/history.png)
 
 ### Calibration game
 
@@ -60,11 +71,12 @@ target/release/slouchup            # tray only
 target/release/slouchup --show     # with the camera window open
 target/release/slouchup --demo     # with the drawn stand-in instead of a webcam
 target/release/slouchup --settings # with the settings window open
+target/release/slouchup --history  # with the history window open
 ```
 
 The limits are saved in `~/.config/slouchup/thresholds.json`, other settings in
-`~/.config/slouchup/settings.json`, and each calibration game's recording in
-`~/.cache/slouchup/games/`. Settings from before the rename, in `~/.config/slouch`, are copied over
+`~/.config/slouchup/settings.json`, each calibration game's recording in
+`~/.cache/slouchup/games/`, and the history in `~/.cache/slouchup/history.json`. Settings from before the rename, in `~/.config/slouch`, are copied over
 on first run.
 
 ## Platforms

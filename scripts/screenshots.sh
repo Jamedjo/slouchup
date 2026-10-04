@@ -18,7 +18,7 @@ window#waybar { background: #2a2a2e; }
 EOF
     cat > "$work/config" <<EOF
 output HEADLESS-1 resolution 1100x860 position 0 0 bg #1b1d26 solid_color
-output HEADLESS-2 resolution 1100x860 position 1100 0 bg #1b1d26 solid_color
+output HEADLESS-2 resolution 1100x1200 position 1100 0 bg #1b1d26 solid_color
 focus output HEADLESS-1
 default_border none
 exec waybar -c "$work/waybar.json" -s "$work/waybar.css"
@@ -45,8 +45,14 @@ sleep 4.5 && shot slouching
 sleep 11.5 && shot leaning
 kill $!
 
+# The settings window is taller than the main screen, so it goes on the second, taller one.
 "$app" --demo --settings > "$work/settings.log" 2>&1 &
-sleep 3 && swaync-client -C > /dev/null && swaymsg -q '[title="slouchup settings"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "slouchup settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
+sleep 4.5 && swaync-client -C > /dev/null && swaymsg -q '[title="slouchup settings"] move to output HEADLESS-2, focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "slouchup settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
+kill $!
+
+# The demo comes with a made-up week, so the history window has something to chart.
+"$app" --demo --history > "$work/history.log" 2>&1 &
+sleep 4.5 && swaync-client -C > /dev/null && swaymsg -q '[title="slouchup history"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "slouchup history") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/history.png"
 kill $!
 
 # The game's first step: sit up and look at one of the two screens. Whichever screen holds the

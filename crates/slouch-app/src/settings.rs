@@ -41,7 +41,9 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
         grace: initial.grace,
         min_gap: initial.min_gap,
         cooldown: initial.cooldown,
+        keep_history: !handle.bridge.persist || config::load_preferences().keep_history,
     });
+    let mut cleared = use_signal(|| false);
     let mut thresholds = use_signal(|| initial.thresholds);
     let bridge = handle.bridge.clone();
     let send = use_callback(move |change: Change| bridge.send(Command::Change(change)));
@@ -115,11 +117,46 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                 p { class: "hint", "Gentle by default. Raise these if it feels naggy." }
             }
 
+            section {
+                h2 { "History" }
+                label { class: "toggle",
+                    input {
+                        r#type: "checkbox",
+                        checked: chosen.keep_history,
+                        onchange: move |event| {
+                            let keep = event.checked();
+                            preferences.with_mut(|p| p.keep_history = keep);
+                            send.call(Change::KeepHistory(keep));
+                        },
+                    }
+                    span { "Keep a history of how you sit" }
+                }
+                p { class: "hint",
+                    "Two weeks of it, readable only by you. Turning this off stops recording and keeps what's there."
+                }
+                button {
+                    class: "button",
+                    disabled: cleared(),
+                    onclick: {
+                        let bridge = handle.bridge.clone();
+                        move |_| {
+                            bridge.send(Command::ClearHistory);
+                            cleared.set(true);
+                        }
+                    },
+                    if cleared() { "History cleared" } else { "Clear history" }
+                }
+            }
+
             div { class: "buttons",
                 button {
                     class: "button",
                     onclick: move |_| {
-                        let defaults = Preferences { camera: preferences().camera, ..Preferences::default() };
+                        let defaults = Preferences {
+                            camera: preferences().camera,
+                            keep_history: preferences().keep_history,
+                            ..Preferences::default()
+                        };
                         preferences.set(defaults);
                         thresholds.set(Thresholds::default());
                         send.call(Change::Defaults);

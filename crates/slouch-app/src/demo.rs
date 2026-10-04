@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use posture::Pose;
 
 use crate::frames::Picture;
+use crate::history::{History, Sitting, midnight};
 
 const WIDTH: u32 = 640;
 const HEIGHT: u32 = 480;
@@ -69,6 +70,46 @@ impl Demo {
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::Relaxed);
     }
+}
+
+/// A made-up week of history for the history chart, since a demo has none of its own:
+/// working days with a lunch break, and slouching that creeps up through each afternoon.
+pub fn sample_history(now: chrono::DateTime<chrono::Local>) -> History {
+    let mut history = History::default();
+    let mut seed = 0x2545_f491_u32;
+    let mut random = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        (seed % 1000) as f32 / 1000.0
+    };
+    for days_back in 0..7 {
+        let day = midnight(now - chrono::Duration::days(days_back));
+        let tiredness = random() * 0.15;
+        for minute in (9 * 60)..(17 * 60 + 30) {
+            let at = day + chrono::Duration::minutes(minute);
+            if at > now {
+                break;
+            }
+            let hours_in = (minute - 9 * 60) as f32 / 60.0;
+            let lunch = (12 * 60 + 30..13 * 60 + 15).contains(&minute);
+            let slouchy = 0.04 + tiredness + 0.035 * hours_in;
+            for _ in 0..5 {
+                let sitting = if lunch || random() < 0.03 {
+                    Sitting::Away
+                } else if random() < slouchy {
+                    Sitting::Slouching
+                } else {
+                    Sitting::Well
+                };
+                history.record(at, sitting);
+            }
+            if !lunch && random() < slouchy * 0.15 {
+                history.nudged(at);
+            }
+        }
+    }
+    history
 }
 
 fn routine(elapsed: Duration) -> Pose {

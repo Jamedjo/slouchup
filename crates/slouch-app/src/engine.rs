@@ -14,6 +14,7 @@ use crate::camera_view::FrameSlot;
 use crate::config::{self, APP_NAME};
 use crate::finder::FaceFinder;
 use crate::frames;
+use crate::history::{History, Sitting};
 use crate::notifier::{Notifier, OnSnooze};
 use crate::source::{Capture, Source};
 
@@ -45,6 +46,9 @@ pub enum Command {
     Change(Change),
     /// Switch camera, by device id or `None` for the first that works.
     UseCamera(Option<String>),
+    ClearHistory,
+    /// Save what needs saving, then end the app.
+    Quit,
 }
 
 /// One setting changed in the settings window. Sent singly, so a window opened before a
@@ -55,6 +59,7 @@ pub enum Change {
     Grace(f64),
     MinGap(f64),
     Cooldown(f64),
+    KeepHistory(bool),
     Defaults,
 }
 
@@ -179,20 +184,40 @@ pub struct Engine {
     results_until: Option<Instant>,
     paused: bool,
     snoozed_until: Option<Instant>,
+    history: SharedHistory,
+    history_saved: Instant,
+    /// Off when the user has asked for no history to be kept.
+    recording: bool,
+}
+
+/// The posture history, shared with the history window.
+pub type SharedHistory = std::sync::Arc<std::sync::Mutex<History>>;
+/// How often the history is written to disk, besides on pause and quit. A crash loses at most
+/// this much.
+const HISTORY_SAVE_EVERY: Duration = Duration::from_secs(10 * 60);
+
+/// How the engine talks to the rest of the app.
+pub struct Links {
+    pub preview: FrameSlot,
+    pub files: Files,
+    pub on_snooze: OnSnooze,
+    pub history: SharedHistory,
+    pub events: UnboundedSender<View>,
+    pub commands: Receiver<Command>,
 }
 
 impl Engine {
     /// Run the engine on its own thread. The camera opens there too, so a slow or refused
     /// camera never holds up the UI, and a missing one is retried.
-    pub fn start(
-        source: Source,
-        settings: Settings,
-        preview: FrameSlot,
-        files: Files,
-        on_snooze: OnSnooze,
-        events: UnboundedSender<View>,
-        commands: Receiver<Command>,
-    ) {
+    pub fn start(source: Source, settings: Settings, links: Links) {
+        let Links {
+            preview,
+            files,
+            on_snooze,
+            history,
+            events,
+            commands,
+        } = links;
         // A demo is for looking at, so it mustn't overwrite the real calibration.
         let persist = !matches!(source, Source::Demo);
         let crashed = (
@@ -221,6 +246,9 @@ impl Engine {
             results_until: None,
             paused: false,
             snoozed_until: None,
+            history,
+            history_saved: Instant::now(),
+            recording: !persist || config::load_preferences().keep_history,
         };
         std::thread::Builder::new()
             .name("slouch-engine".into())
@@ -331,6 +359,7 @@ impl Engine {
             Command::Pause(paused) => {
                 self.paused = paused;
                 if paused {
+                    self.save_history();
                     // Dropping the capture releases the camera, so its light goes off.
                     self.capture = None;
                     self.notifier.dismiss();
@@ -346,6 +375,18 @@ impl Engine {
                 self.publish();
             }
             Command::Change(change) => self.change(change),
+            Command::ClearHistory => {
+                self.history.lock().unwrap().clear();
+                if self.persist
+                    && let Err(error) = config::delete_history()
+                {
+                    tracing::warn!("couldn't delete history: {error}");
+                }
+            }
+            Command::Quit => {
+                self.save_history();
+                std::process::exit(0);
+            }
             Command::UseCamera(id) => {
                 let wanted = Source::Camera(id);
                 if wanted == self.source && self.capture.is_some() {
@@ -373,6 +414,7 @@ impl Engine {
             Change::Grace(grace) => settings.grace = grace,
             Change::MinGap(gap) => settings.min_gap = gap,
             Change::Cooldown(cooldown) => settings.cooldown = cooldown,
+            Change::KeepHistory(keep) => self.recording = keep,
             Change::Defaults => *settings = Settings::default(),
         }
         if let Some(tracker) = &mut self.tracker {
@@ -399,6 +441,7 @@ impl Engine {
             grace: self.settings.grace,
             min_gap: self.settings.min_gap,
             cooldown: self.settings.cooldown,
+            keep_history: self.recording,
         };
         if self.persist
             && let Err(error) = config::save_preferences(&preferences)
@@ -452,9 +495,12 @@ impl Engine {
                 self.pending.push_back(command);
             }
         }
-        self.pending
-            .iter()
-            .any(|c| matches!(c, Command::Pause(true) | Command::UseCamera(_)))
+        self.pending.iter().any(|c| {
+            matches!(
+                c,
+                Command::Pause(true) | Command::UseCamera(_) | Command::Quit
+            )
+        })
     }
 
     fn act(&self, pose: Option<Pose>) {
@@ -501,12 +547,18 @@ impl Engine {
         let baseline = tracker.baseline();
         let Some(update) = update else { return };
 
-        let (mood, status) = match update.state {
-            State::Good => (Mood::Good, "Posture good".to_string()),
-            State::Bad(problem) => (Mood::Bad, problem.to_string()),
-            State::Away => (Mood::Idle, CANT_SEE_YOU.to_string()),
+        let (mood, status, sitting) = match update.state {
+            State::Good => (Mood::Good, "Posture good".to_string(), Sitting::Well),
+            State::Bad(problem) => (Mood::Bad, problem.to_string(), Sitting::Slouching),
+            State::Away => (Mood::Idle, CANT_SEE_YOU.to_string(), Sitting::Away),
         };
         self.set_status(mood, status);
+        if self.recording {
+            self.history
+                .lock()
+                .unwrap()
+                .record(chrono::Local::now(), sitting);
+        }
         match update.action {
             Some(Action::Nag(problem)) if self.snoozed() => {
                 tracing::info!("nag held back by snooze: {problem}");
@@ -517,6 +569,9 @@ impl Engine {
                     drift * seen.height as f32
                 );
                 self.notifier.nag(&problem.to_string());
+                if self.recording {
+                    self.history.lock().unwrap().nudged(chrono::Local::now());
+                }
             }
             Some(Action::Dismiss) => self.notifier.dismiss(),
             None => {}
@@ -527,6 +582,24 @@ impl Engine {
         self.view.lines = Some((line, limit));
         self.view.reading = update.reading;
         self.publish();
+        if self.history_saved.elapsed() >= HISTORY_SAVE_EVERY {
+            self.save_history();
+        }
+    }
+
+    fn save_history(&mut self) {
+        if !self.persist || !self.recording {
+            return;
+        }
+        self.history_saved = Instant::now();
+        let json = {
+            let mut history = self.history.lock().unwrap();
+            history.prune(chrono::Local::now());
+            history.to_json()
+        };
+        if let Err(error) = config::save_history(&json) {
+            tracing::warn!("couldn't save history: {error}");
+        }
     }
 
     fn calibrate(&mut self, announce: bool) -> bool {

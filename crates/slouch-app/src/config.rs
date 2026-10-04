@@ -84,6 +84,30 @@ fn write_json(path: PathBuf, value: &impl Serialize) -> std::io::Result<()> {
     std::fs::rename(temporary, path)
 }
 
+fn history_file() -> PathBuf {
+    cache_dir().join("history.json")
+}
+
+pub fn load_history() -> crate::history::History {
+    crate::history::History::load(&history_file())
+}
+
+/// Save the posture history privately, swapping the new file in whole.
+pub fn delete_history() -> std::io::Result<()> {
+    match std::fs::remove_file(history_file()) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+pub fn save_history(json: &str) -> std::io::Result<()> {
+    let path = history_file();
+    std::fs::create_dir_all(path.parent().expect("file has a directory"))?;
+    let temporary = path.with_extension("json.tmp");
+    write_private(&temporary, json.as_bytes())?;
+    std::fs::rename(temporary, path)
+}
+
 fn write_private(path: &std::path::Path, contents: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let mut options = std::fs::OpenOptions::new();
@@ -103,6 +127,8 @@ pub struct Preferences {
     pub grace: f64,
     pub min_gap: f64,
     pub cooldown: f64,
+    /// Whether the history window's record is kept. Turning it off stops recording.
+    pub keep_history: bool,
 }
 
 impl Default for Preferences {
@@ -113,6 +139,7 @@ impl Default for Preferences {
             grace: defaults.grace,
             min_gap: defaults.min_gap,
             cooldown: defaults.cooldown,
+            keep_history: true,
         }
     }
 }
@@ -164,6 +191,7 @@ pub struct Args {
     pub show: bool,
     pub game: bool,
     pub settings: bool,
+    pub history: bool,
     pub test_notification: bool,
 }
 
@@ -176,11 +204,12 @@ pub fn parse_args() -> Args {
             "--demo" => args.demo = true,
             "--game" => args.game = true,
             "--settings" => args.settings = true,
+            "--history" => args.history = true,
             "--test-notification" => args.test_notification = true,
             "--camera" => args.camera = raw.next().and_then(|n| n.parse().ok()),
             "--help" | "-h" => {
                 println!(
-                    "Usage: slouchup [--show] [--game] [--settings] [--camera N | --demo] [--test-notification]"
+                    "Usage: slouchup [--show] [--game] [--settings] [--history] [--camera N | --demo] [--test-notification]"
                 );
                 std::process::exit(0);
             }

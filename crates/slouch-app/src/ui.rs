@@ -113,12 +113,15 @@ impl Tray {
             &status,
             &PredefinedMenuItem::separator(),
             &MenuItem::with_id("show", "Show camera", true, None),
-            &MenuItem::with_id("game", "Calibration game", true, None),
-            &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
             &MenuItem::with_id("history", "History…", true, None),
             &MenuItem::with_id("settings", "Settings…", true, None),
+            &PredefinedMenuItem::separator(),
+            &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
+            &MenuItem::with_id("game", "Calibration game", true, None),
+            &PredefinedMenuItem::separator(),
             &snooze,
             &pause,
+            &PredefinedMenuItem::separator(),
             &MenuItem::with_id("quit", "Quit", true, None),
         ])
         .expect("tray menu builds");

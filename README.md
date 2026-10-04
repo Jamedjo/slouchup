@@ -81,8 +81,9 @@ target/release/slouchup --history  # with the history window open
 
 The limits are saved in `~/.config/slouchup/thresholds.json`, other settings in
 `~/.config/slouchup/settings.json`, each calibration game's recording in
-`~/.cache/slouchup/games/`, and the history in `~/.cache/slouchup/history.json`. Settings from before the rename, in `~/.config/slouch`, are copied over
-on first run.
+`~/.cache/slouchup/games/`, and the history in `~/.cache/slouchup/history.json`. On Windows they
+are all in `%LOCALAPPDATA%\We Are Frames\slouchup`. Settings from before the rename, in
+`~/.config/slouch`, are copied over on first run.
 
 ## Platforms
 

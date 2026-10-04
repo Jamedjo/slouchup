@@ -3,16 +3,39 @@ import Band from "./Band.astro";
 import Wordmark from "./Wordmark.astro";
 
 const repository = "https://github.com/Jamedjo/slouchup";
+const latest = `${repository}/releases/latest/download`;
+
+// Windows is shown until the page finds it's on a Mac.
+const platforms = [
+  { id: "windows", name: "Windows", href: `${latest}/slouchup-windows.zip` },
+  { id: "mac", name: "Mac", href: `${latest}/slouchup-mac.zip` },
+];
+const others = (id: string) => platforms.filter((platform) => platform.id !== id);
 ---
 
 <Band id="download" ground="ink">
-  <div class="download">
+  <div class="download" data-platform="windows">
+    <script is:inline>
+      {
+        const platform = navigator.userAgentData?.platform ?? navigator.platform;
+        const isIpad = navigator.maxTouchPoints > 1;
+        if (/mac/i.test(platform) && !isIpad) document.currentScript.parentElement.dataset.platform = "mac";
+      }
+    </script>
     <Wordmark size="clamp(3.5rem, 8vw, 6rem)" />
     <p>Two minutes to calibrate. A lot fewer sore necks.</p>
     <div class="ctas">
-      <a class="cta nudge" href={`${repository}/releases`}>Download for Linux</a>
+      {platforms.map(({ id, name, href }) => <a class="cta nudge" data-for={id} href={href}>Download for {name}</a>)}
       <a class="cta outline" href={repository}>Source on GitHub</a>
     </div>
+    {
+      platforms.map(({ id }) => (
+        <p class="others" data-for={id}>
+          Also for {others(id).map(({ name, href }) => <a href={href}>{name}</a>)}. On Linux,{" "}
+          <a href={`${repository}#using-it`}>build it from source</a>.
+        </p>
+      ))
+    }
   </div>
   <footer>
     <span>© {new Date().getFullYear()} James Edwards-Jones</span>
@@ -24,5 +47,9 @@ const repository = "https://github.com/Jamedjo/slouchup";
   .download { display: flex; flex-direction: column; align-items: center; gap: 28px; padding-block: 16px 96px; text-align: center; }
   p { max-width: 32rem; margin: 0; font-size: 1.25rem; color: var(--sand); }
   .ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .others { margin-top: -12px; font-size: 1rem; }
+  .others a { color: var(--butter); }
+  [data-platform="windows"] [data-for="mac"],
+  [data-platform="mac"] [data-for="windows"] { display: none; }
   footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid #4A463E; font-size: 14px; color: var(--text-muted); }
 </style>

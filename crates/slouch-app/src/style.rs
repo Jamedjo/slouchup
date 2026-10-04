@@ -10,7 +10,7 @@ const TOKENS: &str = include_str!("tokens.css");
 const RULES: &str = include_str!("style.css");
 
 /// Family, weight and file of each typeface the design system uses.
-const FONTS: [(&str, u16, &[u8]); 3] = [
+const FONTS: [(&str, u16, &[u8]); 4] = [
     (
         "Fredoka",
         600,
@@ -25,6 +25,11 @@ const FONTS: [(&str, u16, &[u8]); 3] = [
         "Figtree",
         600,
         include_bytes!("../fonts/Figtree-SemiBold.ttf"),
+    ),
+    (
+        "Figtree",
+        800,
+        include_bytes!("../fonts/Figtree-ExtraBold.ttf"),
     ),
 ];
 

@@ -16,7 +16,15 @@ html, body {
 }
 
 /* The rising "up": once per surface, with room above it so it isn't clipped. */
-.up { position: relative; top: calc(var(--rise-up) * -1); color: var(--up); }
+.up {
+  position: relative;
+  top: calc(var(--rise-up) * -1);
+  color: var(--up);
+  font-family: var(--font-wordmark);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.wordmark { font-family: var(--font-wordmark); font-weight: 600; letter-spacing: 0; }
 
 .button {
   min-height: 44px;
@@ -102,7 +110,7 @@ html, body {
   padding: var(--space-3) var(--space-4) var(--space-4);
   background: var(--ink);
 }
-.banner-title { padding-top: var(--rise-up); font: 600 22px/1.2 var(--font-display); }
+.banner-title { padding-top: var(--rise-up); font: var(--weight-display) 22px/1.2 var(--font-display); }
 .banner-line { margin-top: var(--space-1); font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .banner .progress { margin-top: var(--space-3); }
 
@@ -151,9 +159,9 @@ html, body {
 }
 .look-eyes { width: 240px; }
 .look-eyes svg { display: block; width: 100%; }
-.look-title { font: 600 104px/1 var(--font-display); }
-.look-prompt { padding-top: var(--rise-up); font: 600 40px/1.1 var(--font-display); }
-.look-detail { max-width: 900px; font: 600 28px/1.15 var(--font-display); color: var(--text-muted); }
+.look-title { font: var(--weight-display) 104px/1 var(--font-display); letter-spacing: -0.03em; }
+.look-prompt { padding-top: var(--rise-up); font: var(--weight-display) 40px/1.1 var(--font-display); letter-spacing: -0.025em; }
+.look-detail { max-width: 900px; font: var(--weight-display) 28px/1.15 var(--font-display); letter-spacing: -0.02em; color: var(--text-muted); }
 /* Small enough to check you're in frame without becoming the thing you look at. */
 .look-camera {
   position: relative;
@@ -177,7 +185,7 @@ html, body {
   padding: var(--space-6);
   overflow-y: auto;
 }
-.settings h1 { margin: 0; font: 600 40px/1.1 var(--font-display); }
+.settings h1 { margin: 0; font: var(--weight-display) 40px/1.1 var(--font-display); letter-spacing: -0.025em; }
 .settings section {
   display: flex;
   flex-direction: column;
@@ -222,7 +230,7 @@ html, body {
 /* Still running, after the camera window first closes */
 
 .still-running { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6); }
-.still-running h1 { display: flex; align-items: center; gap: var(--space-3); margin: 0; font: 600 26px/1.15 var(--font-display); }
+.still-running h1 { display: flex; align-items: center; gap: var(--space-3); margin: 0; font: var(--weight-display) 26px/1.15 var(--font-display); letter-spacing: -0.02em; }
 .still-running h1 .eyes { width: 32px; height: 32px; }
 .still-running p { margin: 0; }
 .still-running .buttons { margin-top: var(--space-2); }
@@ -236,7 +244,7 @@ html, body {
   padding: var(--space-6);
   overflow-y: auto;
 }
-.history h1 { margin: 0; font: 600 40px/1.1 var(--font-display); }
+.history h1 { margin: 0; font: var(--weight-display) 40px/1.1 var(--font-display); letter-spacing: -0.025em; }
 .history section {
   display: flex;
   flex-direction: column;

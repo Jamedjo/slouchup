@@ -51,6 +51,8 @@
   --radius-pill: 999px;
   --rise-up: 0.3em;
   --rise-up-small: 0.25em;
-  --font-display: "Fredoka", "Trebuchet MS", sans-serif;
+  --font-wordmark: "Fredoka", "Trebuchet MS", sans-serif;
+  --font-display: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --weight-display: 800;
   --font-body: "Figtree", "Segoe UI", system-ui, sans-serif;
 }

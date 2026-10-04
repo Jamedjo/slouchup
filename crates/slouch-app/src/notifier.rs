@@ -1,13 +1,13 @@
 //! Desktop notifications, branded as this app rather than a generic sender.
 //!
-//! The nudge has "I'm up" and "Snooze" buttons on freedesktop servers, and only "Snooze" on macOS,
-//! which shows one action button beside its own Close. Freedesktop servers can also update a
-//! notification already on screen. macOS and Windows fire and forget, so there the nudge isn't
-//! withdrawn when you sit up; snoozing is in the tray menu everywhere.
+//! The nudge has "I'm up" and "Snooze" buttons, but only "Snooze" on macOS, which shows one action
+//! button beside its own Close. Freedesktop servers can also update a notification already on
+//! screen. macOS and Windows fire and forget, so there the nudge isn't withdrawn when you sit up;
+//! snoozing is in the tray menu everywhere.
 
 use std::path::Path;
 use std::sync::Arc;
-#[cfg(target_os = "macos")]
+#[cfg(not(all(unix, not(target_os = "macos"))))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use notify_rust::{Notification, Timeout};
@@ -21,12 +21,10 @@ const NUDGE: &str = "Psst, sit up";
 /// Called, from another thread, when the nudge's Snooze button is pressed.
 pub type OnSnooze = Arc<dyn Fn() + Send + Sync>;
 
-#[cfg(unix)]
 const SNOOZE: &str = "snooze";
 
 /// "I'm up" needs nothing doing: the notification closes and the tracker sees you sit up. macOS
 /// shows a single action button, so there the notification's own Close stands in for it.
-#[cfg(unix)]
 fn with_buttons(notification: &mut Notification) -> &mut Notification {
     if !cfg!(target_os = "macos") {
         notification.action("up", "I'm up");
@@ -39,24 +37,20 @@ pub struct Notifier {
     /// The one slouch notification, so repeats replace it and sitting up can dismiss it.
     #[cfg(all(unix, not(target_os = "macos")))]
     nudge: Option<xdg::Nudge>,
-    /// Whether a nudge's button is still waiting for an answer.
-    #[cfg(target_os = "macos")]
+    /// Whether a nudge's buttons are still waiting for an answer.
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
     awaiting_answer: Arc<AtomicBool>,
-    #[cfg(unix)]
     on_snooze: OnSnooze,
 }
 
 impl Notifier {
     pub fn new(files: Files, on_snooze: OnSnooze) -> Self {
-        #[cfg(windows)]
-        let _ = on_snooze;
         Self {
             files,
             #[cfg(all(unix, not(target_os = "macos")))]
             nudge: None,
-            #[cfg(target_os = "macos")]
+            #[cfg(not(all(unix, not(target_os = "macos"))))]
             awaiting_answer: Arc::default(),
-            #[cfg(unix)]
             on_snooze,
         }
     }
@@ -99,9 +93,9 @@ impl Notifier {
         }
     }
 
-    /// A thread waits for the nudge's button until it's answered or cleared from Notification
-    /// Center, so only one waits at a time, and nudges meanwhile come without the button.
-    #[cfg(target_os = "macos")]
+    /// A thread waits until the nudge is answered or dismissed, which on macOS can be long after
+    /// its banner has gone, so only one waits at a time, and nudges meanwhile come without buttons.
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
     pub fn nag(&mut self, reason: &str) {
         let mut notification = self.base(&self.files.nudge_icon, NUDGE, &nudge_body(reason), 15000);
         if self.awaiting_answer.swap(true, Ordering::AcqRel) {
@@ -126,11 +120,6 @@ impl Notifier {
                 tracing::warn!("notification failed: {error}");
             }
         }
-    }
-
-    #[cfg(windows)]
-    pub fn nag(&mut self, reason: &str) {
-        show(&self.base(&self.files.nudge_icon, NUDGE, &nudge_body(reason), 15000));
     }
 
     pub fn dismiss(&mut self) {

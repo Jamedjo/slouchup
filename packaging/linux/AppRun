@@ -1,0 +1,9 @@
+#!/bin/sh
+# Starts slouchup inside the AppImage, after linuxdeploy's own AppRun has run the GTK plugin's
+# setup. It runs from usr/ because the bundled WebKit finds its helper processes by a path that
+# appimage.sh made relative to there.
+APPDIR=$(dirname "$(readlink -f "$0")")
+export APPDIR
+export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+cd "$APPDIR/usr" || exit 1
+exec "$APPDIR/usr/bin/slouchup" "$@"

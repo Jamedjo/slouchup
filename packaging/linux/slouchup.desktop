@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=slouchup
+Comment=Nudges you when you start to slouch
+Exec=slouchup
+Icon=slouchup
+Categories=Utility;

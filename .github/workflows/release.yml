@@ -108,6 +108,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      # The packages carry the crates' version, which installed copies compare to update.
+      - name: Check the tag matches the crates' version
+        run: |
+          version=$(cargo pkgid -p slouchup | sed 's/.*[#@]//')
+          [ "$GITHUB_REF_NAME" = "v$version" ] ||
+            { echo "::error::$GITHUB_REF_NAME doesn't match the crates' version, $version"; exit 1; }
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -118,4 +127,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "$GITHUB_REF_NAME" dist/*
-          --repo "$GITHUB_REPOSITORY" --title "slouchup $GITHUB_REF_NAME" --generate-notes
+          --repo "$GITHUB_REPOSITORY" --title "SlouchUp $GITHUB_REF_NAME" --generate-notes

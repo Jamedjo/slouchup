@@ -238,16 +238,21 @@ pub fn mark_markup(mark: Mark) -> String {
 
 /// Big friendly eyes looking up, asking you to look at the screen being calibrated.
 pub fn looking_up_svg() -> String {
-    let eyes = [52, 148]
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 96" aria-hidden="true">{}</svg>"#,
+        eyes_markup()
+    )
+}
+
+/// The eyes' shapes, in a 200 by 96 box, for drawing into a bigger picture.
+pub fn eyes_markup() -> String {
+    [52, 148]
         .map(|x| {
             format!(
                 r#"<circle cx="{x}" cy="48" r="44" fill="{BUTTER}"/><circle cx="{x}" cy="30" r="17" fill="{INK}"/>"#
             )
         })
-        .concat();
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 96" aria-hidden="true">{eyes}</svg>"#
-    )
+        .concat()
 }
 
 /// A rounded 128px tile holding `content` drawn in tile units.

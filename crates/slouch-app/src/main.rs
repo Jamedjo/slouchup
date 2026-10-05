@@ -9,6 +9,7 @@ mod demo;
 mod engine;
 mod finder;
 mod frames;
+mod guided;
 mod history;
 mod history_window;
 #[cfg(any(windows, target_os = "linux"))]

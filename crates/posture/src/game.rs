@@ -69,27 +69,101 @@ pub fn game_steps(screens: &[String]) -> Vec<Step> {
         prompt: prompt.to_string(),
         screen,
     };
+    // Each prompt shows on the screen it's about, so "here" names it.
     let mut steps: Vec<Step> = if screens.len() < 2 {
-        vec![step(Pose::Upright, "Sit up straight", None)]
+        vec![step(Pose::Upright, "Sit up, look here", None)]
     } else {
-        screens
-            .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                step(
-                    Pose::Upright,
-                    &format!("Sit up straight, look at the {name}"),
-                    Some(i),
-                )
-            })
+        (0..screens.len())
+            .map(|i| step(Pose::Upright, "Sit up, look here", Some(i)))
             .collect()
     };
     steps.extend([
-        step(Pose::Slump, "Slouch down, don't lean forward", None),
-        step(Pose::Upright, "Sit up straight again", None),
-        step(Pose::Lean, "Slouch leaning towards the screen", None),
+        step(Pose::Slump, "Slouch down, not forward", None),
+        step(Pose::Upright, "Sit up again", None),
+        step(Pose::Lean, "Slouch forward", None),
     ]);
     steps
+}
+
+/// How far into a slouch, as a share of the current limit, counts as having moved into it.
+const MOVED_SHARE: f32 = 0.5;
+/// Frames that must sit still before a pose counts as reached.
+const STEADY_FRAMES: usize = 6;
+/// How much the eye line may wander between those frames, in face sizes.
+const STEADY_EYES: f32 = 0.08;
+/// How much the face size may wander between those frames, as a fraction.
+const STEADY_SIZE: f32 = 0.04;
+
+/// Watches someone getting into a step's pose, so a step can start measuring once they're there
+/// rather than after a fixed wait.
+#[derive(Clone, Debug)]
+pub struct Arrival {
+    pose: Pose,
+    upright: Option<Posture>,
+    limits: Thresholds,
+    recent: Vec<Posture>,
+}
+
+impl Arrival {
+    /// `upright` is how they sat in an earlier upright step, if there was one yet; without it,
+    /// sitting still is enough.
+    pub fn new(pose: Pose, upright: Option<Posture>, limits: Thresholds) -> Self {
+        Self {
+            pose,
+            upright,
+            limits,
+            recent: Vec::new(),
+        }
+    }
+
+    /// Note the latest frame's posture, or `None` with no face, and say whether they're in the
+    /// pose and keeping still.
+    pub fn arrived(&mut self, posture: Option<Posture>) -> bool {
+        let Some(posture) = posture else {
+            self.recent.clear();
+            return false;
+        };
+        self.recent.push(posture);
+        if self.recent.len() > STEADY_FRAMES {
+            self.recent.remove(0);
+        }
+        self.steady() && self.in_pose(posture)
+    }
+
+    fn steady(&self) -> bool {
+        if self.recent.len() < STEADY_FRAMES {
+            return false;
+        }
+        let spread = |value: fn(&Posture) -> f32| {
+            let values = self.recent.iter().map(value);
+            values.clone().fold(f32::MIN, f32::max) - values.fold(f32::MAX, f32::min)
+        };
+        let size = self.recent.iter().map(|p| p.size).sum::<f32>() / self.recent.len() as f32;
+        spread(|p| p.eye_y) < STEADY_EYES * size && spread(|p| p.size) < STEADY_SIZE * size
+    }
+
+    fn in_pose(&self, posture: Posture) -> bool {
+        let Some(upright) = self.upright else {
+            return true;
+        };
+        let reading = Reading::new(posture, upright);
+        let moved = |value: f32, limit: f32| value >= MOVED_SHARE * limit;
+        match self.pose {
+            Pose::Upright => {
+                !moved(reading.drop, self.limits.drop) && !moved(reading.lean, self.limits.lean)
+            }
+            Pose::Slump => moved(reading.drop, self.limits.drop),
+            Pose::Lean => moved(reading.lean, self.limits.lean),
+        }
+    }
+}
+
+/// How someone sat across the frames of upright steps, as the middle of each measure.
+pub fn typical(postures: &[Posture]) -> Option<Posture> {
+    (!postures.is_empty()).then(|| Posture {
+        eye_y: median(postures.iter().map(|p| p.eye_y).collect()),
+        size: median(postures.iter().map(|p| p.size).collect()),
+    })
 }
 
 /// Work out a baseline and thresholds from a played game, or `None` if a step saw too little of you.
@@ -241,6 +315,60 @@ mod tests {
             .filter(|s| s.pose == Pose::Upright)
             .collect();
         assert!(score_game(&upright_only, &play(&upright_only)).is_none());
+    }
+
+    fn still(eye_y: f32, size: f32) -> Option<Posture> {
+        Some(Posture { eye_y, size })
+    }
+
+    #[test]
+    fn arriving_needs_the_pose_and_a_moment_of_keeping_still() {
+        let upright = Posture {
+            eye_y: 220.0,
+            size: 74.0,
+        };
+        let mut slump = Arrival::new(Pose::Slump, Some(upright), Thresholds::default());
+        assert!(
+            !(0..10).any(|_| slump.arrived(still(222.0, 74.0))),
+            "still upright"
+        );
+        let arrived: Vec<bool> = (0..6).map(|_| slump.arrived(still(270.0, 74.0))).collect();
+        assert_eq!(arrived, [false, false, false, false, false, true]);
+        assert!(!slump.arrived(None), "out of frame");
+
+        let mut lean = Arrival::new(Pose::Lean, Some(upright), Thresholds::default());
+        assert!(
+            !(0..10).any(|_| lean.arrived(still(270.0, 74.0))),
+            "sunk, not leaning"
+        );
+        assert!(
+            (0..6)
+                .map(|_| lean.arrived(still(240.0, 90.0)))
+                .last()
+                .unwrap()
+        );
+
+        let mut back = Arrival::new(Pose::Upright, Some(upright), Thresholds::default());
+        assert!(!(0..10).any(|_| back.arrived(still(270.0, 74.0))));
+        assert!(
+            (0..6)
+                .map(|_| back.arrived(still(221.0, 74.0)))
+                .last()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn arriving_waits_for_a_wobbling_head_to_settle() {
+        let mut first = Arrival::new(Pose::Upright, None, Thresholds::default());
+        let wobbling = [220.0, 232.0, 218.0, 235.0, 221.0, 230.0, 219.0];
+        assert!(!wobbling.iter().any(|&y| first.arrived(still(y, 74.0))));
+        assert!(
+            (0..6)
+                .map(|_| first.arrived(still(220.0, 74.0)))
+                .last()
+                .unwrap()
+        );
     }
 
     #[test]

@@ -42,7 +42,7 @@ showing whether SlouchUp is on and how you're sitting, with:
 On a panel that never passes on clicks to the tray icon, starting SlouchUp again opens its window.
 
 The first time it starts, a welcome asks before turning the camera on, lets you pick which camera,
-and shows the icon to look for in the tray. Turning the camera on starts the calibration game.
+and shows the icon to look for in the tray. Turning the camera on starts the guided calibration.
 
 <img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
@@ -67,13 +67,18 @@ can turn it off or clear it. The screenshot is the demo's made-up week.
 
 ![Today's posture in quarter hours, and slouching per day for the last week](docs/screenshots/history.png)
 
-### Calibration game
+### Guided calibration
 
-Each step fills a screen: sit up looking at each of your screens in turn, then slouch, sit up,
-and lean in, with a small view of your camera to check you're in frame. SlouchUp then sets its
-limits halfway between how you sit and how you slouch.
+Each step fills a screen: sit up looking at each of your screens in turn, then slouch down, sit
+up, and slouch forward. The first time, each kind of step is taught as it comes, with a drawing
+and one line, until you press Next. Then the step says what to do and waits until you're in the
+pose, or until you press Next, then hides its words and measures while a ring fills round the
+eyes. A small view of your camera sits at the top, centred, near where a laptop's camera is.
+SlouchUp then sets its limits halfway between how you sit and how you slouch, and shows them,
+with Do it again in case a step went wrong. Stop, or Esc, ends it at any point and keeps the
+calibration from before.
 
-![A calibration step filling the left screen, telling the drawn person where to look](docs/screenshots/calibration-game.png)
+![The first step of the guided calibration: sit up](docs/screenshots/calibration-game.png)
 
 The baseline also follows you slowly: it catches up within minutes when you sit better than it,
 but only over half an hour when you sit worse, so gradual slouching isn't quietly accepted.
@@ -89,7 +94,7 @@ target/release/slouchup --history  # with the window open on History
 ```
 
 The limits are saved in `~/.config/slouchup/thresholds.json`, other settings in
-`~/.config/slouchup/settings.json`, each calibration game's recording in
+`~/.config/slouchup/settings.json`, each guided calibration's recording in
 `~/.cache/slouchup/games/`, and the history in `~/.cache/slouchup/history.json`. On Windows they
 are all in `%LOCALAPPDATA%\We Are Frames\slouchup`. Settings from before the rename, in
 `~/.config/slouch`, are copied over on first run.
@@ -127,10 +132,10 @@ A Rust workspace, with the parts that could be useful elsewhere in their own cra
 |---|---|
 | [`yunet`](crates/yunet) | YuNet face detection with five landmarks, in pure Rust on [tract](https://github.com/sonos/tract) |
 | [`camera-drift`](crates/camera-drift) | How far a webcam has tilted, from the background around a person |
-| [`posture`](crates/posture) | Slouch decisions, nag timing and calibration game scoring, with no camera or UI |
+| [`posture`](crates/posture) | Slouch decisions, nag timing and calibration scoring, with no camera or UI |
 | [`tray-popover`](crates/tray-popover) | Where a popover goes by a tray icon, and when it opens or closes, with no windowing library |
 | [`tray-popover-tao`](crates/tray-popover-tao) | That popover in a [tao](https://github.com/tauri-apps/tao) window, as a panel on macOS |
-| [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, window and game |
+| [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, window and guided calibration |
 
 The camera preview reaches the window through Dioxus's in-process protocol rather than a local
 server, so no other program or web page can read the camera through SlouchUp.

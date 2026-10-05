@@ -27,6 +27,7 @@ use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, PAUSES, View};
 use crate::history_window::HistoryPage;
+use crate::notification_access::{self, Fix, Health, HealthStrip};
 use crate::notifier;
 use crate::onboarding::Onboarding;
 use crate::settings::SettingsPage;
@@ -113,6 +114,8 @@ struct Tray {
     pause: Submenu,
     resume: MenuItem,
     calibrate: Submenu,
+    /// The fix the status row offers while nudges can't reach you.
+    fix: Cell<Option<Fix>>,
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
     shown: RefCell<Shown>,
     slide: RefCell<Slide>,
@@ -125,6 +128,8 @@ struct Shown {
     theme: Theme,
     status: String,
     paused: bool,
+    /// Whether the mark is struck through, as nudges can't reach you.
+    struck: bool,
 }
 
 /// The tray's letters easing towards where the latest reading puts them.
@@ -218,9 +223,13 @@ fn rounded(mark: Mark) -> Mark {
     }
 }
 
-fn tray_icon(mark: Mark, theme: Theme) -> Icon {
-    Icon::from_rgba(art::rasterise(&art::tray_svg(mark, theme), 64, 64), 64, 64)
-        .expect("icon is 64x64")
+fn tray_icon(mark: Mark, theme: Theme, struck: bool) -> Icon {
+    Icon::from_rgba(
+        art::rasterise(&art::tray_svg(mark, theme, struck), 64, 64),
+        64,
+        64,
+    )
+    .expect("icon is 64x64")
 }
 
 /// The tray menu id for each of [`PAUSES`], by its place in the list.
@@ -254,6 +263,7 @@ impl Tray {
             theme,
             status: "Starting…".into(),
             paused,
+            struck: false,
         };
         let status = MenuItem::with_id("status", &shown.status, false, None);
         let pause = Submenu::with_id("pause", "Pause", true);
@@ -298,7 +308,7 @@ impl Tray {
         .expect("tray menu builds");
         let icon = dioxus::desktop::trayicon::init_tray_icon(
             menu.clone(),
-            Some(tray_icon(shown.mark, shown.theme)),
+            Some(tray_icon(shown.mark, shown.theme, shown.struck)),
         );
         let _ = icon.set_tooltip(Some(APP_NAME));
         // appindicator has no tooltip; panels show its title, which falls back to GLib's app name.
@@ -311,25 +321,41 @@ impl Tray {
             pause,
             resume,
             calibrate,
+            fix: Cell::new(None),
             slide: Slide::settled_at(shown.mark).into(),
             shown: shown.into(),
             sliding: false.into(),
         }
     }
 
-    /// Show `view`, and say whether the letters have started sliding and need redrawing.
-    fn show(&self, view: &View) -> bool {
+    /// Show `view`, with `health` in place of its status while nudges can't reach you, and say
+    /// whether the letters have started sliding and need redrawing.
+    fn show(&self, view: &View, health: Option<&Health>) -> bool {
         let now = Instant::now();
         {
             let mut slide = self.slide.borrow_mut();
             let was_down = matches!(slide.target, Mark::Live { down: true, .. });
             slide.head_for(tray_mark(view, was_down), now);
         }
+        let struck = health.is_some();
+        if self.shown.borrow().struck != struck {
+            self.shown.borrow_mut().struck = struck;
+            self.draw();
+            let tip = health.map_or(APP_NAME.to_string(), |h| {
+                format!("{APP_NAME} · {}", h.title)
+            });
+            let _ = self.icon.set_tooltip(Some(tip));
+        }
         let sliding = self.redraw();
         let mut shown = self.shown.borrow_mut();
-        if shown.status != view.status {
-            self.status.set_text(&view.status);
-            shown.status = view.status.clone();
+        let status = health.map_or_else(|| view.status.clone(), Health::line);
+        if shown.status != status {
+            self.status.set_text(&status);
+            shown.status = status;
+        }
+        let fix = health.and_then(|h| h.fix);
+        if self.fix.replace(fix) != fix {
+            self.status.set_enabled(fix.is_some());
         }
         if shown.paused != view.paused {
             shown.paused = view.paused;
@@ -364,16 +390,23 @@ impl Tray {
         let mut shown = self.shown.borrow_mut();
         if shown.mark != mark {
             shown.mark = mark;
-            let _ = self.icon.set_icon(Some(tray_icon(shown.mark, shown.theme)));
+            drop(shown);
+            self.draw();
         }
         !slide.settled(now)
     }
 
+    fn draw(&self) {
+        let shown = self.shown.borrow();
+        let _ = self
+            .icon
+            .set_icon(Some(tray_icon(shown.mark, shown.theme, shown.struck)));
+    }
+
     fn suit_panel(&self, theme: Theme) {
-        let mut shown = self.shown.borrow_mut();
-        if shown.theme != theme {
-            shown.theme = theme;
-            let _ = self.icon.set_icon(Some(tray_icon(shown.mark, shown.theme)));
+        let changed = std::mem::replace(&mut self.shown.borrow_mut().theme, theme) != theme;
+        if changed {
+            self.draw();
         }
     }
 }
@@ -438,6 +471,7 @@ pub fn App() -> Element {
         ..View::default()
     });
     let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme(), bridge.onboarding)));
+    let access = notification_access::use_access().0;
     use_future({
         let tray = tray.clone();
         move || {
@@ -614,6 +648,7 @@ pub fn App() -> Element {
 
     let on_menu = use_hook({
         let bridge = bridge.clone();
+        let tray = tray.clone();
         move || {
             std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
                 "show" => show_main_window(),
@@ -623,6 +658,11 @@ pub fn App() -> Element {
                 "guided" => start_game(()),
                 "quick" => bridge.send(Command::Recalibrate),
                 "resume" => resume(()),
+                "status" => {
+                    if let Some(fix) = tray.fix.get() {
+                        notification_access::apply(fix);
+                    }
+                }
                 "quit" => crate::quit(),
                 id => {
                     if let Some(length) = pause_for(id) {
@@ -644,7 +684,8 @@ pub fn App() -> Element {
         let tray = tray.clone();
         move || {
             let current = view.read();
-            if tray.show(&current) && !tray.sliding.replace(true) {
+            let health = access().and_then(|now| notification_access::health(now, current.missed));
+            if tray.show(&current, health.as_ref()) && !tray.sliding.replace(true) {
                 let tray = tray.clone();
                 spawn(async move {
                     loop {
@@ -762,6 +803,9 @@ pub fn App() -> Element {
                     }
                 }
             }
+            if shown != Page::Settings {
+                HealthStrip { missed: view().missed }
+            }
             main { class: "view",
                 match shown {
                     Page::Camera => rsx! {
@@ -783,6 +827,7 @@ pub fn App() -> Element {
                             initial: view.peek().settings,
                             calibrated: view.peek().calibrated,
                             on_calibrate: open_calibrate,
+                            missed: view.peek().missed,
                         }
                     },
                 }

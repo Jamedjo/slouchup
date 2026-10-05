@@ -15,6 +15,7 @@ use crate::config::{self, APP_NAME};
 use crate::finder::FaceFinder;
 use crate::frames;
 use crate::history::{History, Sitting};
+use crate::notification_access;
 use crate::notifier::{Notifier, OnPause};
 use crate::source::{Capture, Source};
 
@@ -86,6 +87,8 @@ pub struct View {
     /// What the calibration game is asking for right now.
     pub look_at: Option<LookAt>,
     pub paused: bool,
+    /// Nudges today that couldn't show, or were held for Do Not Disturb.
+    pub missed: u32,
 }
 
 impl Default for View {
@@ -101,6 +104,7 @@ impl Default for View {
             banner: None,
             look_at: None,
             paused: false,
+            missed: 0,
         }
     }
 }
@@ -196,6 +200,8 @@ pub struct Engine {
     paused: bool,
     /// When a pause for a while ends, by the wall clock, so time asleep counts towards it.
     resume_at: Option<chrono::DateTime<chrono::Local>>,
+    /// Nudges that didn't show, and the day they're counted for.
+    missed: (chrono::NaiveDate, u32),
     history: SharedHistory,
     history_saved: Instant,
     /// Off when the user has asked for no history to be kept.
@@ -265,6 +271,7 @@ impl Engine {
             results_until: None,
             paused: false,
             resume_at: None,
+            missed: (chrono::Local::now().date_naive(), 0),
             history,
             history_saved: Instant::now(),
             recording: !persist || preferences.keep_history,
@@ -296,6 +303,11 @@ impl Engine {
         self.view.settings = self.settings;
         self.view.calibrated = self.calibrated;
         self.view.paused = self.paused;
+        self.view.missed = if self.missed.0 == chrono::Local::now().date_naive() {
+            self.missed.1
+        } else {
+            0
+        };
         if self
             .results_until
             .is_some_and(|until| Instant::now() > until)
@@ -588,13 +600,21 @@ impl Engine {
         }
         match update.action {
             Some(Action::Nag(problem)) => {
-                tracing::info!(
-                    "nag: {problem} (camera drift {:.0}px)",
-                    drift * seen.height as f32
-                );
-                self.notifier.nag(&problem.to_string());
-                if self.recording {
-                    self.history.lock().unwrap().nudged(chrono::Local::now());
+                match notification_access::current().filter(|access| access.holds_nudges()) {
+                    Some(access) => {
+                        tracing::info!("nag not shown ({access:?}): {problem}");
+                        self.missed_one();
+                    }
+                    None => {
+                        tracing::info!(
+                            "nag: {problem} (camera drift {:.0}px)",
+                            drift * seen.height as f32
+                        );
+                        self.notifier.nag(&problem.to_string());
+                        if self.recording {
+                            self.history.lock().unwrap().nudged(chrono::Local::now());
+                        }
+                    }
                 }
             }
             Some(Action::Dismiss) => self.notifier.dismiss(),
@@ -608,6 +628,18 @@ impl Engine {
         self.publish();
         if self.history_saved.elapsed() >= HISTORY_SAVE_EVERY {
             self.save_history();
+        }
+    }
+
+    /// Count a nudge that didn't show, afresh each day, as History does.
+    fn missed_one(&mut self) {
+        let now = chrono::Local::now();
+        if self.missed.0 != now.date_naive() {
+            self.missed = (now.date_naive(), 0);
+        }
+        self.missed.1 += 1;
+        if self.recording {
+            self.history.lock().unwrap().missed(now);
         }
     }
 

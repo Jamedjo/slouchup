@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - packaging/**
+      - crates/slouch-app/src/app-icon.svg
       - crates/slouch-app/examples/icon.rs
       - crates/slouch-app/src/icon_file.rs
       - .github/workflows/release.yml

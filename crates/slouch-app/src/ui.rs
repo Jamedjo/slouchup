@@ -413,6 +413,12 @@ pub fn App() -> Element {
         }
     });
     let mut page = use_signal(|| bridge.start_on);
+    let mut calibrate_open = use_signal(|| false);
+    // Calibrating starts from the camera, where its choice opens and you can see yourself.
+    let open_calibrate = use_callback(move |()| {
+        page.set(Page::Camera);
+        calibrate_open.set(!paused());
+    });
     let open_page = use_callback(move |to: Page| {
         page.set(to);
         show_main_window();
@@ -630,9 +636,15 @@ pub fn App() -> Element {
             }
             main { class: "view",
                 match shown {
-                    Page::Camera => rsx! { CameraPage { current: view(), paused: paused(), start_game } },
+                    Page::Camera => rsx! { CameraPage { current: view(), paused: paused(), start_game, calibrate_open } },
                     Page::History => rsx! { HistoryPage {} },
-                    Page::Settings => rsx! { SettingsPage { initial: view.peek().settings } },
+                    Page::Settings => rsx! {
+                        SettingsPage {
+                            initial: view.peek().settings,
+                            calibrated: view.peek().calibrated,
+                            on_calibrate: open_calibrate,
+                        }
+                    },
                 }
             }
         }
@@ -642,9 +654,13 @@ pub fn App() -> Element {
 /// The live picture with its lines and readings, and a bar under it, as video calls have, with
 /// Calibrate.
 #[component]
-fn CameraPage(current: View, paused: bool, start_game: Callback<()>) -> Element {
+fn CameraPage(
+    current: View,
+    paused: bool,
+    start_game: Callback<()>,
+    calibrate_open: Signal<bool>,
+) -> Element {
     let bridge = use_context::<Bridge>();
-    let calibrate_open = use_signal(|| false);
     let (frame_width, frame_height) = current.frame_size;
     let down = |y: f32| y / frame_height * 100.0;
     rsx! {

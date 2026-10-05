@@ -89,6 +89,16 @@ impl Thresholds {
             lean: pick(self.lean, defaults.lean),
         }
     }
+
+    /// These limits carried over from one calibration to the next, each kept as far from the
+    /// new calibration as it was set from the old one, so a recalibration keeps someone's choice.
+    pub fn recalibrated(self, old: Thresholds, new: Thresholds) -> Self {
+        Thresholds {
+            drop: new.drop * self.drop / old.drop,
+            lean: new.lean * self.lean / old.lean,
+        }
+        .checked()
+    }
 }
 
 impl Default for Thresholds {
@@ -169,6 +179,25 @@ mod tests {
                 lean: 0.2527
             }
         );
+    }
+
+    #[test]
+    fn recalibrating_keeps_how_far_each_limit_was_set_from_calibration() {
+        let old = Thresholds {
+            drop: 0.6,
+            lean: 0.2,
+        };
+        let chosen = Thresholds {
+            drop: 0.3,
+            lean: 0.2,
+        };
+        let new = Thresholds {
+            drop: 1.0,
+            lean: 0.1,
+        };
+        let carried = chosen.recalibrated(old, new);
+        assert!((carried.drop - 0.5).abs() < 1e-6);
+        assert!((carried.lean - 0.1).abs() < 1e-6);
     }
 
     #[test]

@@ -90,7 +90,8 @@ are all in `%LOCALAPPDATA%\We Are Frames\slouchup`. Settings from before the ren
 SlouchUp runs on Linux, macOS and Windows, and CI builds and tests it on all three.
 
 Every push to `main` packages it for each platform, and a `v*` tag publishes the packages as a
-[release](https://github.com/Jamedjo/slouchup/releases):
+[release](https://github.com/Jamedjo/slouchup/releases). `scripts/release.sh` raises the version
+for a release, and once that's merged, pushes its tag. The packages are:
 
 - Linux: `slouchup-x86_64.AppImage`, from `packaging/linux/appimage.sh` with Velopack. It looks
   for a newer release every few hours, downloads it in the background, and replaces itself with it

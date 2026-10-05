@@ -1,13 +1,13 @@
 [package]
 name = "slouchup"
-version = "0.0.1"
+version = "0.0.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
 base64 = "0.22"
-camera-drift = { version = "0.0.1", path = "../camera-drift" }
+camera-drift = { version = "0.0.2", path = "../camera-drift" }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 crossbeam-channel = "0.5"
 dioxus = { version = "0.7.10", features = ["desktop"] }
@@ -17,12 +17,12 @@ futures-channel = "0.3"
 futures-timer = "3"
 futures-util = "0.3"
 notify-rust = "4.18"
-posture = { version = "0.0.1", path = "../posture" }
+posture = { version = "0.0.2", path = "../posture" }
 resvg = "0.45"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1"
-yunet = { version = "0.0.1", path = "../yunet" }
+yunet = { version = "0.0.2", path = "../yunet" }
 
 [build-dependencies]
 ico = "0.5"

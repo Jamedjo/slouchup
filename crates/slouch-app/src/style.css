@@ -477,6 +477,7 @@ button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 .button.danger:hover { border-color: var(--ink); background: var(--ink); }
 .button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
 .button[aria-disabled="true"]:hover { background: transparent; }
+.settings-quit { display: flex; justify-content: flex-end; }
 
 /* First run: the camera window's welcome, in the settings view's day look */
 
@@ -526,3 +527,100 @@ button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 .legend { display: flex; gap: var(--space-4); font-size: 13px; color: var(--text-muted); }
 .legend > span { display: inline-flex; align-items: center; gap: var(--space-1); }
 .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
+
+/* The tray's popover. Its menus open over what's below them, since the window doesn't grow. */
+
+.popover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--track);
+  outline: none;
+}
+.popover-head { display: flex; align-items: center; justify-content: space-between; }
+.popover-brand {
+  margin-left: calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.popover-brand:hover { background: var(--surface-raised); }
+.popover-brand .wordmark { display: block; padding-top: var(--rise-up-small); font-size: 24px; line-height: 1; }
+.popover-brand .up { top: calc(var(--rise-up-small) * -1); }
+.popover-state {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--butter);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.popover-state.paused { background: var(--surface-raised); color: var(--text-muted); }
+.popover-status { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0; font-size: 14px; line-height: 1.3; }
+.popover-status .mark { width: 24px; height: 24px; }
+.popover-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.popover-actions .control { justify-content: center; width: 100%; padding: 0 var(--space-3); }
+.control:disabled { opacity: 0.5; cursor: default; }
+.control:disabled:hover { border-color: var(--track); }
+.drop { position: relative; }
+.drop-button .caret, .drop-button .caret svg { color: inherit; }
+.drop-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 264px;
+  padding: var(--space-1);
+  border: 2px solid var(--track);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  box-sizing: border-box;
+}
+.drop:last-child .drop-menu { left: auto; right: 0; }
+.drop-option {
+  padding: var(--space-2) 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: 600 14px/1.3 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+.drop-option:hover, .drop-option:focus-visible { background: var(--track); }
+.popover-views { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-1); }
+.popover-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 12px/1 var(--font-body);
+  cursor: pointer;
+}
+.popover-view:hover { background: var(--surface-raised); color: var(--text); }
+.popover-view .icon, .popover-view .icon svg { width: 20px; height: 20px; }
+.popover-quit {
+  margin-top: auto;
+  padding: 10px var(--space-2) var(--space-1);
+  border: 0;
+  border-top: 2px solid var(--track);
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 13px/1.3 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+.popover-quit:hover { color: var(--text); }

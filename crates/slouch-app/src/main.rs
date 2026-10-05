@@ -13,10 +13,14 @@ mod history;
 mod history_window;
 #[cfg(any(windows, target_os = "linux"))]
 mod installed;
+mod instance;
 #[cfg(target_os = "linux")]
 mod launcher;
+#[cfg(target_os = "macos")]
+mod mac_tray;
 mod notifier;
 mod onboarding;
+mod popover;
 mod screens;
 mod settings;
 mod source;
@@ -63,12 +67,21 @@ fn main() {
         Notifier::new(files, Arc::new(|| {})).nag("You're 20% closer to the screen than usual.");
         return;
     }
+    let start_on = if args.settings {
+        ui::Page::Settings
+    } else if args.history {
+        ui::Page::History
+    } else {
+        ui::Page::Camera
+    };
+    let (relaunch_tx, relaunches) = futures_channel::mpsc::unbounded();
     // The demo runs alongside the real app, so screenshots don't mean quitting it.
-    let _lock = if args.demo {
+    let _instance = if args.demo {
         None
     } else {
-        match single_instance(&cache) {
-            Some(lock) => Some(lock),
+        match instance::claim(&cache, relaunch_tx) {
+            Some(instance) => Some(instance),
+            None if instance::show_running(&cache, start_on) => std::process::exit(0),
             None => {
                 eprintln!("{APP_NAME} is already running");
                 std::process::exit(1);
@@ -138,18 +151,15 @@ fn main() {
     };
     Engine::start(source, settings, links);
     let _ = QUIT.set(command_tx.clone());
+    let shown_at_start = args.show || args.settings || args.history || onboarding;
     let bridge = ui::Bridge {
         commands: command_tx,
         views: Arc::new(Mutex::new(Some(view_rx))),
         start_with_game: args.game,
         persist: !args.demo,
-        start_on: if args.settings {
-            ui::Page::Settings
-        } else if args.history {
-            ui::Page::History
-        } else {
-            ui::Page::Camera
-        },
+        start_on,
+        shown_at_start,
+        relaunches: Arc::new(Mutex::new(Some(relaunches))),
         history,
         preview,
         onboarding,
@@ -158,7 +168,7 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title(APP_NAME)
-        .with_visible(args.show || args.settings || args.history || onboarding)
+        .with_visible(shown_at_start)
         // Tall enough for a 4:3 camera's picture to fill the window's width, and short enough
         // for a 1366x768 laptop's screen.
         .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 684.0))
@@ -170,10 +180,4 @@ fn main() {
         .with_cfg(desktop)
         .with_context(bridge)
         .launch(ui::App);
-}
-
-fn single_instance(cache: &std::path::Path) -> Option<std::fs::File> {
-    let lock = std::fs::File::create(cache.join("lock")).ok()?;
-    lock.try_lock().ok()?;
-    Some(lock)
 }

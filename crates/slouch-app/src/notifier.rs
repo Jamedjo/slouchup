@@ -3,7 +3,7 @@
 //! The nudge has "I'm up" and "Pause 30 min" buttons, but only "Pause 30 min" on macOS, which shows
 //! one action button beside its own Close. Freedesktop servers can also update a notification
 //! already on screen. macOS and Windows fire and forget, so there the nudge isn't withdrawn when you
-//! sit up; pausing is in the tray menu everywhere.
+//! sit up; pausing is in the tray's popover everywhere.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -159,7 +159,7 @@ pub fn camera_off(files: &Files) {
     in_tray(
         files,
         &format!("{APP_NAME} is in your tray"),
-        "The camera's off. Choose Resume from its menu when you're ready.",
+        "The camera's off. Click its icon and choose Resume when you're ready.",
     );
 }
 

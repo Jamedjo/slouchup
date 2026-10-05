@@ -18,13 +18,13 @@ stand-in who sits up, sinks and leans in, while detection runs on it for real.
 
 SlouchUp lives in the system tray as the word "up" in a frame. The letters sink as you do, and
 once you pass your slouch limit, marked by notches on the frame, they turn over to read "dn". They
-turn dotted when you're out of frame, and grey while you've paused. Its menu shows the current
-status and has:
+turn dotted when you're out of frame, and grey while you've paused. Clicking it opens a popover
+showing whether SlouchUp is on and how you're sitting, with:
 
-- **SlouchUp** — opens SlouchUp's window, on your camera with the baseline and slouch lines, and
-  how close each measure is to its limit. Its header switches between the Camera, History and
-  Settings views. On the picture's bottom strip, as on a video call, are Pause, which offers the
-  same choices as the tray's; with more than one camera, a button listing them; and Calibrate,
+- **SlouchUp**, the wordmark at the top — opens SlouchUp's window, on your camera with the
+  baseline and slouch lines, and how close each measure is to its limit. Its header switches
+  between the Camera, History and Settings views. On the picture's bottom strip, as on a video call, are Pause, which offers the
+  same choices as the popover's; with more than one camera, a button listing them; and Calibrate,
   offering a quick calibration or the guided, full-screen one.
 - **Pause** — for 30 minutes, for 1 hour or until you resume. The camera turns off, say for a
   call, and comes back on by itself when the time is up. While paused, **Resume** takes its place.
@@ -37,7 +37,9 @@ status and has:
   spent slouching. Settings has how soon to nudge, how sensitive it is compared with your
   calibration, and whether to keep history, each section with its finer controls in an expandable
   at its end.
-- **Quit**.
+- **Quit SlouchUp**, which is also at the bottom of Settings.
+
+On a panel that never passes on clicks to the tray icon, starting SlouchUp again opens its window.
 
 The first time it starts, a welcome asks before turning the camera on, lets you pick which camera,
 and shows the icon to look for in the tray. Turning the camera on starts the calibration game.
@@ -50,7 +52,7 @@ in a small window with Keep running and Quit buttons, and in a notification.
 <img src="docs/screenshots/still-running.png" alt="The window and notification saying SlouchUp is still running, each with a way to quit" width="520">
 
 When the camera is off, after Not now on the welcome or while paused, a notification says so
-instead, with Resume in the tray menu to turn it on.
+instead, with Resume in the tray's popover to turn it on.
 
 <img src="docs/screenshots/camera-off.png" alt="The notification saying SlouchUp is in the tray with the camera off" width="400">
 
@@ -126,6 +128,8 @@ A Rust workspace, with the parts that could be useful elsewhere in their own cra
 | [`yunet`](crates/yunet) | YuNet face detection with five landmarks, in pure Rust on [tract](https://github.com/sonos/tract) |
 | [`camera-drift`](crates/camera-drift) | How far a webcam has tilted, from the background around a person |
 | [`posture`](crates/posture) | Slouch decisions, nag timing and calibration game scoring, with no camera or UI |
+| [`tray-popover`](crates/tray-popover) | Where a popover goes by a tray icon, and when it opens or closes, with no windowing library |
+| [`tray-popover-tao`](crates/tray-popover-tao) | That popover in a [tao](https://github.com/tauri-apps/tao) window, as a panel on macOS |
 | [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, window and game |
 
 The camera preview reaches the window through Dioxus's in-process protocol rather than a local

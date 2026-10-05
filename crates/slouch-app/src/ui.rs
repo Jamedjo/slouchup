@@ -9,26 +9,21 @@ use crossbeam_channel::Sender;
 use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::tao::monitor::MonitorHandle;
 use dioxus::desktop::tao::window::{Fullscreen, Icon as WindowIcon};
-use dioxus::desktop::trayicon::menu::{
-    Icon as MenuIcon, IconMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu,
-};
-use dioxus::desktop::trayicon::{Icon, TrayIcon};
-use dioxus::desktop::{
-    Config, DesktopContext, WindowBuilder, use_muda_event_handler, use_tray_menu_event_handler,
-    use_wry_event_handler, window,
-};
+use dioxus::desktop::{Config, DesktopContext, WindowBuilder, use_wry_event_handler, window};
 use dioxus::prelude::*;
-use futures_channel::mpsc::UnboundedReceiver;
+use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures_util::StreamExt;
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use crate::art::{self, Files, Mark, Mood, Theme};
 use crate::camera_picker::CameraPicker;
 use crate::camera_view::{CameraView, FrameSlot};
-use crate::config::{self, APP_NAME};
+use crate::config::{self, APP_ID, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, PAUSES, View};
 use crate::history_window::HistoryPage;
 use crate::notifier;
 use crate::onboarding::Onboarding;
+use crate::popover::{self, Action, PopoverWindow};
 use crate::settings::SettingsPage;
 use crate::source::{self, CameraInfo};
 use crate::{screens, still_running, style};
@@ -61,7 +56,11 @@ pub struct Bridge {
     pub files: Files,
     /// The view the window opens on.
     pub start_on: Page,
+    /// Whether the window is showing when the app starts, rather than only the tray icon.
+    pub shown_at_start: bool,
     pub history: crate::engine::SharedHistory,
+    /// The pages asked for by starting SlouchUp again while it runs.
+    pub relaunches: Arc<Mutex<Option<UnboundedReceiver<Page>>>>,
 }
 
 /// The window's views, switched between in its header.
@@ -73,9 +72,9 @@ pub enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 3] = [Page::Camera, Page::History, Page::Settings];
+    pub const ALL: [Page; 3] = [Page::Camera, Page::History, Page::Settings];
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Page::Camera => "Camera",
             Page::History => "History",
@@ -83,7 +82,7 @@ impl Page {
         }
     }
 
-    fn icon(self) -> &'static str {
+    pub fn icon(self) -> &'static str {
         match self {
             Page::Camera => CAMERA_ICON,
             Page::History => HISTORY_ICON,
@@ -107,12 +106,9 @@ impl Bridge {
 
 struct Tray {
     icon: TrayIcon,
-    menu: Menu,
-    status: MenuItem,
-    /// The ways to pause, swapped for `resume` while paused.
-    pause: Submenu,
-    resume: MenuItem,
-    calibrate: Submenu,
+    /// The target that opens the popover when the icon is pressed through accessibility.
+    #[cfg(target_os = "macos")]
+    _press: Option<objc2::rc::Retained<objc2::runtime::NSObject>>,
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
     shown: RefCell<Shown>,
     slide: RefCell<Slide>,
@@ -123,8 +119,6 @@ struct Tray {
 struct Shown {
     mark: Mark,
     theme: Theme,
-    status: String,
-    paused: bool,
 }
 
 /// The tray's letters easing towards where the latest reading puts them.
@@ -223,94 +217,40 @@ fn tray_icon(mark: Mark, theme: Theme) -> Icon {
         .expect("icon is 64x64")
 }
 
-/// The tray menu id for each of [`PAUSES`], by its place in the list.
-fn pause_id(index: usize) -> String {
-    format!("pause-{index}")
-}
-
-/// The length of pause a tray menu id stands for.
-fn pause_for(id: &str) -> Option<Option<Duration>> {
-    let index: usize = id.strip_prefix("pause-")?.parse().ok()?;
-    PAUSES.get(index).map(|&(_, length)| length)
-}
-
-/// The tray's names for [`PAUSES`], under Pause.
-const TRAY_PAUSES: [&str; 3] = ["30 minutes", "1 hour", "Until I resume"];
-
-/// Where Pause sits in the tray menu, after SlouchUp, the status and a separator.
-const PAUSE_AT: usize = 3;
-
-/// A menu icon from `svg`, with any `currentColor` in `colour`.
-fn menu_icon(svg: &str, colour: &str) -> Option<MenuIcon> {
-    let size = 32;
-    let svg = svg.replace("currentColor", colour);
-    MenuIcon::from_rgba(art::rasterise(&svg, size, size), size, size).ok()
-}
-
 impl Tray {
-    fn new(theme: Theme, paused: bool) -> Self {
+    /// The tray icon, with no menu: its clicks go to `clicks`, and a left click opens the
+    /// popover.
+    fn new(theme: Theme, paused: bool, clicks: UnboundedSender<TrayIconEvent>) -> Self {
         let shown = Shown {
             mark: if paused { Mark::Paused } else { Mark::Lost },
             theme,
-            status: "Starting…".into(),
-            paused,
         };
-        let status = MenuItem::with_id("status", &shown.status, false, None);
-        let pause = Submenu::with_id("pause", "Pause", true);
-        for (index, label) in TRAY_PAUSES.iter().enumerate() {
-            pause
-                .append(&MenuItem::with_id(pause_id(index), label, true, None))
-                .expect("pause menu builds");
-        }
-        let resume = MenuItem::with_id("resume", "Resume", true, None);
-        // Menus follow the system's theme, as the panel does, so its text colour suits the icons.
-        let ink = match theme {
-            Theme::Night => "#F2EADB",
-            Theme::Day => "#2B2724",
-        };
-        let row = |id: &str, label: &str, svg: &str| {
-            IconMenuItem::with_id(id, label, true, menu_icon(svg, ink), None)
-        };
-        let calibrate = Submenu::with_id_and_items(
-            "calibrate",
-            "Calibrate",
-            !paused,
-            &[
-                &MenuItem::with_id("quick", "Quick", true, None),
-                &MenuItem::with_id("guided", "Guided, full screen", true, None),
-            ],
-        )
-        .expect("calibrate menu builds");
-        let menu = Menu::new();
-        menu.append_items(&[
-            &row("show", APP_NAME, &art::app_icon_svg()),
-            &status,
-            &PredefinedMenuItem::separator(),
-            if paused { &resume } else { &pause },
-            &calibrate,
-            &PredefinedMenuItem::separator(),
-            &row("camera", "Camera", CAMERA_ICON),
-            &row("history", "History", HISTORY_ICON),
-            &row("settings", "Settings", SETTINGS_ICON),
-            &PredefinedMenuItem::separator(),
-            &MenuItem::with_id("quit", "Quit", true, None),
-        ])
-        .expect("tray menu builds");
-        let icon = dioxus::desktop::trayicon::init_tray_icon(
-            menu.clone(),
-            Some(tray_icon(shown.mark, shown.theme)),
-        );
-        let _ = icon.set_tooltip(Some(APP_NAME));
-        // appindicator has no tooltip; panels show its title, which falls back to GLib's app name.
+        #[cfg(target_os = "macos")]
+        let pressed = clicks.clone();
+        TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+            popover::trace(|| format!("tray-icon sent {event:?}"));
+            let _ = clicks.unbounded_send(event);
+        }));
+        let builder = TrayIconBuilder::new()
+            .with_id(APP_ID)
+            .with_icon(tray_icon(shown.mark, shown.theme))
+            .with_tooltip(APP_NAME)
+            .with_menu_on_left_click(false)
+            .with_menu_on_right_click(false);
+        // Some panels show a StatusNotifierItem's title rather than its tooltip. On macOS the
+        // title is text beside the icon.
         #[cfg(target_os = "linux")]
-        glib::set_application_name(APP_NAME);
+        let builder = builder.with_title(APP_NAME);
+        let icon = builder.build().expect("tray icon builds");
+        #[cfg(target_os = "macos")]
+        let _press = crate::mac_tray::make_accessible(&icon, move |event| {
+            popover::trace(|| format!("accessibility press sent {event:?}"));
+            let _ = pressed.unbounded_send(event);
+        });
         Self {
             icon,
-            menu,
-            status,
-            pause,
-            resume,
-            calibrate,
+            #[cfg(target_os = "macos")]
+            _press,
             slide: Slide::settled_at(shown.mark).into(),
             shown: shown.into(),
             sliding: false.into(),
@@ -325,35 +265,7 @@ impl Tray {
             let was_down = matches!(slide.target, Mark::Live { down: true, .. });
             slide.head_for(tray_mark(view, was_down), now);
         }
-        let sliding = self.redraw();
-        let mut shown = self.shown.borrow_mut();
-        if shown.status != view.status {
-            self.status.set_text(&view.status);
-            shown.status = view.status.clone();
-        }
-        if shown.paused != view.paused {
-            shown.paused = view.paused;
-            self.offer_pauses(!view.paused);
-        }
-        sliding
-    }
-
-    /// Offer Pause, or while paused, Resume in its place. Calibrating needs the
-    /// camera, so it's offered only while it's on.
-    fn offer_pauses(&self, offer: bool) {
-        let result = if offer {
-            self.menu
-                .remove(&self.resume)
-                .and_then(|()| self.menu.insert(&self.pause, PAUSE_AT))
-        } else {
-            self.menu
-                .remove(&self.pause)
-                .and_then(|()| self.menu.insert(&self.resume, PAUSE_AT))
-        };
-        if let Err(error) = result {
-            tracing::warn!("couldn't update the tray menu: {error}");
-        }
-        self.calibrate.set_enabled(offer);
+        self.redraw()
     }
 
     /// Draw the letters where the slide has them now, and say whether they're still moving.
@@ -424,7 +336,8 @@ fn once(say: impl Fn() + 'static) -> std::rc::Rc<dyn Fn()> {
     })
 }
 
-fn show_main_window() {
+fn show_main_window(mut shown: Signal<bool>) {
+    shown.set(true);
     let main = window();
     main.set_visible(true);
     main.set_focus();
@@ -437,7 +350,48 @@ pub fn App() -> Element {
         paused: bridge.onboarding,
         ..View::default()
     });
-    let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme(), bridge.onboarding)));
+    let (tray, clicks) = use_hook(|| {
+        let (sender, clicks) = futures_channel::mpsc::unbounded();
+        let tray = Tray::new(panel_theme(), bridge.onboarding, sender);
+        (
+            std::rc::Rc::new(tray),
+            std::rc::Rc::new(RefCell::new(Some(clicks))),
+        )
+    });
+    let (popover, popover_actions) = use_hook(|| {
+        let (sender, actions) = futures_channel::mpsc::unbounded();
+        (
+            PopoverWindow::open(sender),
+            std::rc::Rc::new(RefCell::new(Some(actions))),
+        )
+    });
+    use_future({
+        let popover = popover.clone();
+        move || {
+            let clicks = clicks.borrow_mut().take();
+            let popover = popover.clone();
+            async move {
+                let Some(mut clicks) = clicks else {
+                    return;
+                };
+                while let Some(click) = clicks.next().await {
+                    popover::trace(|| format!("app received {click:?}"));
+                    popover.click(&click);
+                }
+            }
+        }
+    });
+    use_future(|| async {
+        if !popover::tracing_tray() {
+            return;
+        }
+        let mut beat = 0u64;
+        loop {
+            futures_timer::Delay::new(Duration::from_secs(2)).await;
+            beat += 1;
+            popover::trace(|| format!("app tasks running, heartbeat {beat}"));
+        }
+    });
     use_future({
         let tray = tray.clone();
         move || {
@@ -510,6 +464,10 @@ pub fn App() -> Element {
         }
     });
     let mut page = use_signal(|| bridge.start_on);
+    // While the window is hidden its page is left empty. WebKit and WebView2 suspend a hidden
+    // page, and dioxus-desktop stops running this window's tasks, the tray's included, until the
+    // page takes the edits it was last sent. An empty page has no edits to take.
+    let mut main_shown = use_signal(|| bridge.shown_at_start);
     let mut calibrate_open = use_signal(|| false);
     // Calibrating starts from the camera, where its choice opens and you can see yourself.
     let open_calibrate = use_callback(move |()| {
@@ -518,7 +476,7 @@ pub fn App() -> Element {
     });
     let open_page = use_callback(move |to: Page| {
         page.set(to);
-        show_main_window();
+        show_main_window(main_shown);
     });
     use_hook({
         let wanted = bridge.start_with_game;
@@ -555,6 +513,9 @@ pub fn App() -> Element {
             };
             if *window_id != main {
                 return;
+            }
+            if matches!(event, WindowEvent::CloseRequested) {
+                main_shown.set(false);
             }
             match event {
                 WindowEvent::CloseRequested if paused() => say_camera_off(),
@@ -608,42 +569,64 @@ pub fn App() -> Element {
         }
     });
     let not_now = move |()| {
+        main_shown.set(false);
         window().set_visible(false);
         say_camera_off();
     };
 
-    let on_menu = use_hook({
+    use_future({
         let bridge = bridge.clone();
+        let popover = popover.clone();
         move || {
-            std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
-                "show" => show_main_window(),
-                "camera" => open_page(Page::Camera),
-                "settings" => open_page(Page::Settings),
-                "history" => open_page(Page::History),
-                "guided" => start_game(()),
-                "quick" => bridge.send(Command::Recalibrate),
-                "resume" => resume(()),
-                "quit" => crate::quit(),
-                id => {
-                    if let Some(length) = pause_for(id) {
-                        pause(length);
+            let actions = popover_actions.borrow_mut().take();
+            let bridge = bridge.clone();
+            let popover = popover.clone();
+            async move {
+                let Some(mut actions) = actions else {
+                    return;
+                };
+                while let Some(action) = actions.next().await {
+                    popover::trace(|| format!("popover chose {action:?}"));
+                    if !matches!(action, Action::Quit | Action::Loaded) {
+                        popover.hide();
+                    }
+                    match action {
+                        Action::Open(to) => open_page(to),
+                        Action::Pause(length) => pause(length),
+                        Action::Resume => resume(()),
+                        Action::QuickCalibration => bridge.send(Command::Recalibrate),
+                        Action::GuidedCalibration => start_game(()),
+                        Action::Quit => crate::quit(),
+                        Action::Close => {}
+                        Action::Loaded => popover.settle(),
                     }
                 }
-            }))
+            }
         }
     });
-    // Tray menus are muda menus, and dioxus-desktop installs one global muda handler for the
-    // menubar and another for the tray; whichever it installs last receives every click.
-    use_tray_menu_event_handler({
-        let on_menu = on_menu.clone();
-        move |event| on_menu.borrow_mut()(event.id().0.as_str())
+    // Starting SlouchUp again while it runs opens its window, which is the way in where a panel
+    // never passes on clicks.
+    use_future({
+        let bridge = bridge.clone();
+        move || {
+            let relaunches = bridge.relaunches.lock().unwrap().take();
+            async move {
+                let Some(mut relaunches) = relaunches else {
+                    return;
+                };
+                while let Some(to) = relaunches.next().await {
+                    open_page(to);
+                }
+            }
+        }
     });
-    use_muda_event_handler(move |event| on_menu.borrow_mut()(event.id().0.as_str()));
 
     use_effect({
         let tray = tray.clone();
+        let popover = popover.clone();
         move || {
             let current = view.read();
+            popover.show(&current);
             if tray.show(&current) && !tray.sliding.replace(true) {
                 let tray = tray.clone();
                 spawn(async move {
@@ -723,6 +706,11 @@ pub fn App() -> Element {
         }
     });
 
+    if !main_shown() {
+        return rsx! {
+            div { class: "app", "data-theme": Theme::Night.name() }
+        };
+    }
     if onboarding() && page() == Page::Camera {
         let chosen = bridge
             .persist
@@ -896,7 +884,7 @@ fn pause_choices(pause: Callback<Option<Duration>>) -> Vec<Choice> {
                     (chrono::Local::now() + chrono::Duration::from_std(length).unwrap_or_default())
                         .format("%H:%M")
                 ),
-                None => "Resume from here or the tray menu.".into(),
+                None => "Resume from here or the tray.".into(),
             },
             choose: Callback::new(move |()| pause(length)),
         })
@@ -1154,15 +1142,6 @@ mod tests {
             }
         ));
         assert!(worth_moving(still, Mark::Lost));
-    }
-
-    #[test]
-    fn tray_pause_ids_name_their_lengths() {
-        for (index, (_, length)) in PAUSES.iter().enumerate() {
-            assert_eq!(pause_for(&pause_id(index)), Some(*length));
-        }
-        assert_eq!(pause_for("pause-9"), None);
-        assert_eq!(pause_for("quick"), None);
     }
 
     #[test]

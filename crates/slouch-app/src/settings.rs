@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 use posture::{Settings, Thresholds};
 
 use crate::art::Theme;
-use crate::config::{self, Preferences};
+use crate::config::{self, APP_NAME, Preferences};
 use crate::engine::{Change, Command};
 use crate::ui::Bridge;
 
@@ -153,6 +153,9 @@ pub fn SettingsPage(
                 preferences.with_mut(|p| p.keep_history = keep);
                 send.call(Change::KeepHistory(keep));
             } }
+            div { class: "settings-quit",
+                button { class: "button", onclick: move |_| crate::quit(), "Quit {APP_NAME}" }
+            }
         }
     }
 }

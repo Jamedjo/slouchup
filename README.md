@@ -1,11 +1,11 @@
 # SlouchUp
 
-SlouchUp watches your webcam and nudges you the moment you start slouching, so the habit gets caught
-while it's forming rather than at the end of the day.
+SlouchUp nudges you the moment you start slouching, so the habit gets caught while it's forming
+rather than at the end of the day.
 
-It finds your face, notes where your eyes sit and how big your face looks when you're sitting
-well, then nags when your eyes sink or your face grows as you lean towards the screen.
-Everything runs on your computer; no frame leaves it.
+It learns where your eyes sit and how big your face looks when you're sitting well, then nudges
+you when your eyes sink or your face grows as you lean towards the screen. Everything runs on your
+computer. Video never leaves it.
 
 | Sitting well | Slouching | Leaning in |
 |---|---|---|
@@ -28,7 +28,7 @@ status and has:
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
 - **History** — how you've sat today, quarter hour by quarter hour, and how much of each of the
   last seven days you spent slouching.
-- **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
+- **Settings** — which camera to use, the two slouch limits, and how soon and how often to nudge.
 - **Snooze for 30 minutes** — no nudges for a while, though the tray icon carries on. The nudge
   itself has a Snooze button too.
 - **Pause** and **Quit**.
@@ -52,7 +52,7 @@ instead, with Resume in the tray menu to turn it on.
 
 ### History
 
-The history window charts what SlouchUp has seen: sitting well, slouching and away for each
+The history window charts how you've sat: sitting well, slouching and away for each
 quarter hour of today, then the share of each of the last seven days spent slouching. It keeps
 two weeks, readable only by you, and saves every ten minutes and when you pause or quit. Settings
 can turn it off or clear it. The screenshot is the demo's made-up week.
@@ -69,7 +69,7 @@ limits halfway between how you sit and how you slouch.
 
 The baseline also follows you slowly: it catches up within minutes when you sit better than it,
 but only over half an hour when you sit worse, so gradual slouching isn't quietly accepted.
-Tilting a laptop lid is told apart from slouching by watching the background move.
+Tilting a laptop lid is told apart from slouching by how the background moves.
 
 ```sh
 cargo build --release

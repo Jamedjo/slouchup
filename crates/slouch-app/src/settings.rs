@@ -76,6 +76,7 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     }
                 }
                 p { class: "hint", "Switching camera recalibrates, so sit up nicely for a moment." }
+                p { class: "hint", "Everything runs on your computer. Video never leaves it." }
             }
 
             section {
@@ -98,7 +99,7 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
             section {
                 h2 { "Nagging" }
                 Slider {
-                    label: "Nag after slouching for",
+                    label: "Nudge after slouching for",
                     shown: format!("{:.1} s", chosen.grace),
                     min: 0.5, max: 10.0, step: 0.5, value: chosen.grace,
                     onchange: move |v| { preferences.with_mut(|p| p.grace = v); send.call(Change::Grace(v)) },

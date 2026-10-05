@@ -328,7 +328,10 @@ impl Engine {
             }
             if self.tracker.is_none() {
                 if !self.calibrate(announce) {
-                    self.set_status(Mood::Idle, "I couldn't see you to calibrate");
+                    self.set_status(
+                        Mood::Idle,
+                        "You were out of frame; calibrating again shortly",
+                    );
                     self.publish();
                     std::thread::sleep(RETRY_CALIBRATION);
                 }
@@ -479,7 +482,7 @@ impl Engine {
                 self.set_status(Mood::Idle, format!("No camera: {error}"));
                 self.publish();
                 if !std::mem::replace(&mut self.told_no_camera, true) {
-                    self.notifier.info("I can't find a camera", &error);
+                    self.notifier.info("No camera found", &error);
                 }
                 self.reopen_at = Some(Instant::now() + RETRY_CAMERA);
                 false
@@ -549,7 +552,7 @@ impl Engine {
         let Some(update) = update else { return };
 
         let (mood, status, sitting) = match update.state {
-            State::Good => (Mood::Good, "Posture good".to_string(), Sitting::Well),
+            State::Good => (Mood::Good, "Sitting tall".to_string(), Sitting::Well),
             State::Bad(problem) => (Mood::Bad, problem.to_string(), Sitting::Slouching),
             State::Away => (Mood::Idle, OUT_OF_FRAME.to_string(), Sitting::Away),
         };
@@ -610,7 +613,7 @@ impl Engine {
         if announce {
             self.notifier.info(
                 "Sit up straight",
-                "Hold it for a few seconds while I learn how you sit.",
+                "Hold it for a few seconds. This sets how you usually sit.",
             );
         }
         let mut postures = Vec::new();
@@ -761,10 +764,10 @@ impl Engine {
 
         let (Some(result), Some(drift)) = (result, drift) else {
             self.view.look_at = None;
-            self.set_status(Mood::Idle, "I couldn't see you in every step");
+            self.set_status(Mood::Idle, "You were out of frame for part of the game");
             self.view.banner = Some(Banner {
                 title: "Try again".into(),
-                lines: vec!["I couldn't see you in every step of the game.".into()],
+                lines: vec!["You were out of frame for part of the game.".into()],
                 progress: None,
             });
             self.results_until = Some(Instant::now() + RESULTS_SHOWN);
@@ -788,7 +791,7 @@ impl Engine {
             screen: None,
             prompt: "Calibrated".into(),
             detail: format!(
-                "I'll nudge you when your eyes drop {:.2} face heights or your face grows {:.0}%.",
+                "You'll get a nudge when your eyes drop {:.2} face heights or you're {:.0}% closer to the screen.",
                 limits.drop,
                 limits.lean * 100.0
             ),

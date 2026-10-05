@@ -36,11 +36,11 @@ pub fn Onboarding(
     rsx! {
         div { class: "settings onboarding", "data-theme": Theme::Day.name(),
             h1 {
-                "Hi, I'm "
+                "Meet "
                 span { class: "wordmark", "slouch", span { class: "up", "up" } }
             }
             p { class: "lede",
-                "I nudge you once when your head starts to sink. Everything runs on your computer, and video never leaves it."
+                "You get one nudge when your head starts to sink. Everything runs on your computer. Video never leaves it."
             }
             section {
                 h2 { "Camera" }
@@ -59,7 +59,7 @@ pub fn Onboarding(
                 p { class: "hint", "It stays off until you turn it on below." }
             }
             section {
-                h2 { "Where to find me" }
+                h2 { "Where to find it" }
                 div { class: "tray-moods",
                     for (mood, label) in MOODS {
                         span { class: "tray-mood mood-{mood:?}", PostureMark { mood }, "{label}" }

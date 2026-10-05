@@ -1,9 +1,9 @@
 //! In-process camera preview: frames reach this app's webview through its own `dioxus://`
 //! protocol, never through a socket that another program or a web page could read.
 //!
-//! The drawing side is the WebGL2 script from `dioxus-cameras`, which polls a URL for a small
-//! binary frame format; this module serves that format from an asset handler instead of the
-//! crate's loopback HTTP server.
+//! The drawing side is a WebGL2 script adapted from `dioxus-cameras`, which polls a URL for a
+//! small binary frame format; this module serves that format from an asset handler instead of
+//! the crate's loopback HTTP server.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -11,12 +11,12 @@ use std::sync::{Arc, Mutex};
 use dioxus::desktop::use_asset_handler;
 use dioxus::desktop::wry::http::Response;
 use dioxus::prelude::*;
-use dioxus_cameras::PREVIEW_JS;
 use dioxus_cameras::cameras::{self, Frame, PixelFormat};
 
 use crate::frames::Picture;
 
 const HANDLER: &str = "camera";
+const PREVIEW_JS: &str = include_str!("preview.js");
 const MAGIC: &[u8; 4] = b"CAMS";
 const VERSION: u8 = 1;
 const FORMAT_NONE: u8 = 0;
@@ -45,6 +45,16 @@ impl FrameSlot {
     pub fn publish(&self, frame: Picture) {
         *self.frame.lock().unwrap() = Some(frame);
         self.counter.fetch_add(1, Ordering::Release);
+    }
+
+    /// The newest frame, or just its header when the preview already has it: a whole frame is
+    /// a megabyte or more, and the preview polls faster than cameras send frames.
+    fn encode_after(&self, shown: Option<u32>) -> Vec<u8> {
+        let counter = self.counter.load(Ordering::Acquire);
+        if shown == Some(counter) {
+            return header(FORMAT_NONE, 0, 0, 0, counter);
+        }
+        self.encode()
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -114,11 +124,11 @@ fn header(format: u8, width: u32, height: u32, stride: u32, counter: u32) -> Vec
 /// A live view of `slot`, sized to fill its parent.
 #[component]
 pub fn CameraView(slot: FrameSlot) -> Element {
-    use_asset_handler(HANDLER, move |_request, responder| {
+    use_asset_handler(HANDLER, move |request, responder| {
         let response = Response::builder()
             .header("Content-Type", "application/octet-stream")
             .header("Cache-Control", "no-store")
-            .body(slot.encode())
+            .body(slot.encode_after(shown(request.uri().query())))
             .expect("static headers are valid");
         responder.respond(response);
     });
@@ -130,6 +140,15 @@ pub fn CameraView(slot: FrameSlot) -> Element {
         }
         script { dangerous_inner_html: "{PREVIEW_JS}" }
     }
+}
+
+/// The frame counter in a poll's `after=` query.
+fn shown(query: Option<&str>) -> Option<u32> {
+    query?
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("after="))?
+        .parse()
+        .ok()
 }
 
 #[cfg(test)]
@@ -154,6 +173,19 @@ mod tests {
             "counter"
         );
         assert_eq!(&body[24..], &[1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn polls_for_a_frame_already_shown_get_only_a_header() {
+        let slot = FrameSlot::default();
+        slot.publish(Picture::Rgba {
+            width: 1,
+            height: 1,
+            pixels: Arc::new(vec![1, 2, 3, 4]),
+        });
+        assert_eq!(slot.encode_after(shown(Some("after=1"))).len(), 24);
+        assert_eq!(slot.encode_after(shown(Some("after=0"))).len(), 28);
+        assert_eq!(slot.encode_after(shown(None)).len(), 28);
     }
 
     #[test]

@@ -20,6 +20,7 @@ mod launcher;
 mod mac_notify;
 #[cfg(target_os = "macos")]
 mod mac_tray;
+mod notification_access;
 mod notifier;
 mod onboarding;
 mod popover;
@@ -72,6 +73,9 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_secs(1));
         return;
     }
+    // Windows says whether an app's toasts are turned off only once it's a toast sender.
+    #[cfg(windows)]
+    windows_shell::toast_sender(&files.icon);
     let start_on = if args.settings {
         ui::Page::Settings
     } else if args.history {

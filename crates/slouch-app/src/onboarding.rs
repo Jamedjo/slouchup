@@ -4,6 +4,7 @@
 use dioxus::prelude::*;
 
 use crate::art::{Mood, Theme};
+use crate::notification_access::NotificationsSection;
 use crate::source;
 use crate::ui::PostureMark;
 
@@ -67,6 +68,7 @@ pub fn Onboarding(
                 }
                 p { class: "hint", "{TRAY_HOME}" }
             }
+            NotificationsSection { welcome: true, missed: 0 }
             div { class: "buttons",
                 button { class: "button primary", onclick: move |_| on_start.call(camera()), "Turn on the camera" }
                 button { class: "button", onclick: move |_| on_later.call(()), "Not now" }

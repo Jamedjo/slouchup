@@ -21,6 +21,7 @@ use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_ID, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, PAUSES, View};
 use crate::history_window::HistoryPage;
+use crate::notification_access::{self, Health, HealthStrip};
 use crate::notifier;
 use crate::onboarding::Onboarding;
 use crate::popover::{self, Action, PopoverWindow};
@@ -119,6 +120,8 @@ struct Tray {
 struct Shown {
     mark: Mark,
     theme: Theme,
+    /// Whether the mark is struck through, as nudges can't reach you.
+    struck: bool,
 }
 
 /// The tray's letters easing towards where the latest reading puts them.
@@ -212,9 +215,13 @@ fn rounded(mark: Mark) -> Mark {
     }
 }
 
-fn tray_icon(mark: Mark, theme: Theme) -> Icon {
-    Icon::from_rgba(art::rasterise(&art::tray_svg(mark, theme), 64, 64), 64, 64)
-        .expect("icon is 64x64")
+fn tray_icon(mark: Mark, theme: Theme, struck: bool) -> Icon {
+    Icon::from_rgba(
+        art::rasterise(&art::tray_svg(mark, theme, struck), 64, 64),
+        64,
+        64,
+    )
+    .expect("icon is 64x64")
 }
 
 impl Tray {
@@ -224,6 +231,7 @@ impl Tray {
         let shown = Shown {
             mark: if paused { Mark::Paused } else { Mark::Lost },
             theme,
+            struck: false,
         };
         #[cfg(target_os = "macos")]
         let pressed = clicks.clone();
@@ -233,7 +241,7 @@ impl Tray {
         }));
         let builder = TrayIconBuilder::new()
             .with_id(APP_ID)
-            .with_icon(tray_icon(shown.mark, shown.theme))
+            .with_icon(tray_icon(shown.mark, shown.theme, shown.struck))
             .with_tooltip(APP_NAME)
             .with_menu_on_left_click(false)
             .with_menu_on_right_click(false);
@@ -257,13 +265,22 @@ impl Tray {
         }
     }
 
-    /// Show `view`, and say whether the letters have started sliding and need redrawing.
-    fn show(&self, view: &View) -> bool {
+    /// Show `view`, with the mark struck through and `health` in the tooltip while nudges can't
+    /// reach you, and say whether the letters have started sliding and need redrawing.
+    fn show(&self, view: &View, health: Option<&Health>) -> bool {
         let now = Instant::now();
         {
             let mut slide = self.slide.borrow_mut();
             let was_down = matches!(slide.target, Mark::Live { down: true, .. });
             slide.head_for(tray_mark(view, was_down), now);
+        }
+        let struck = health.is_some();
+        if std::mem::replace(&mut self.shown.borrow_mut().struck, struck) != struck {
+            self.draw();
+            let tip = health.map_or(APP_NAME.to_string(), |h| {
+                format!("{APP_NAME} · {}", h.title)
+            });
+            let _ = self.icon.set_tooltip(Some(tip));
         }
         self.redraw()
     }
@@ -273,19 +290,22 @@ impl Tray {
         let now = Instant::now();
         let slide = self.slide.borrow();
         let mark = rounded(slide.at(now));
-        let mut shown = self.shown.borrow_mut();
-        if shown.mark != mark {
-            shown.mark = mark;
-            let _ = self.icon.set_icon(Some(tray_icon(shown.mark, shown.theme)));
+        if std::mem::replace(&mut self.shown.borrow_mut().mark, mark) != mark {
+            self.draw();
         }
         !slide.settled(now)
     }
 
+    fn draw(&self) {
+        let shown = self.shown.borrow();
+        let _ = self
+            .icon
+            .set_icon(Some(tray_icon(shown.mark, shown.theme, shown.struck)));
+    }
+
     fn suit_panel(&self, theme: Theme) {
-        let mut shown = self.shown.borrow_mut();
-        if shown.theme != theme {
-            shown.theme = theme;
-            let _ = self.icon.set_icon(Some(tray_icon(shown.mark, shown.theme)));
+        if std::mem::replace(&mut self.shown.borrow_mut().theme, theme) != theme {
+            self.draw();
         }
     }
 }
@@ -358,6 +378,7 @@ pub fn App() -> Element {
             std::rc::Rc::new(RefCell::new(Some(clicks))),
         )
     });
+    let access = notification_access::use_access().0;
     let (popover, popover_actions) = use_hook(|| {
         let (sender, actions) = futures_channel::mpsc::unbounded();
         (
@@ -597,6 +618,7 @@ pub fn App() -> Element {
                         Action::QuickCalibration => bridge.send(Command::Recalibrate),
                         Action::GuidedCalibration => start_game(()),
                         Action::Quit => crate::quit(),
+                        Action::Fix(fix) => notification_access::apply(fix),
                         Action::Close => {}
                         Action::Loaded => popover.settle(),
                     }
@@ -626,8 +648,9 @@ pub fn App() -> Element {
         let popover = popover.clone();
         move || {
             let current = view.read();
-            popover.show(&current);
-            if tray.show(&current) && !tray.sliding.replace(true) {
+            let health = access().and_then(|now| notification_access::health(now, current.missed));
+            popover.show(&current, health.as_ref());
+            if tray.show(&current, health.as_ref()) && !tray.sliding.replace(true) {
                 let tray = tray.clone();
                 spawn(async move {
                     loop {
@@ -750,6 +773,9 @@ pub fn App() -> Element {
                     }
                 }
             }
+            if shown != Page::Settings {
+                HealthStrip { missed: view().missed }
+            }
             main { class: "view",
                 match shown {
                     Page::Camera => rsx! {
@@ -771,6 +797,7 @@ pub fn App() -> Element {
                             initial: view.peek().settings,
                             calibrated: view.peek().calibrated,
                             on_calibrate: open_calibrate,
+                            missed: view.peek().missed,
                         }
                     },
                 }

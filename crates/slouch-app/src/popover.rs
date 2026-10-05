@@ -19,6 +19,7 @@ use tray_popover_tao::{PopoverEvent, TaoPopover, TaoSurface};
 use crate::art::{Mood, Theme};
 use crate::config::APP_NAME;
 use crate::engine::{PAUSES, View};
+use crate::notification_access::{Fix, Health};
 use crate::ui::{Page, PostureMark, move_focus, window_config};
 
 /// The popover's size in logical pixels. It doesn't grow: its menus open over what's below them.
@@ -63,6 +64,8 @@ pub enum Action {
     QuickCalibration,
     GuidedCalibration,
     Quit,
+    /// The fix for nudges not reaching you, such as turning notifications on.
+    Fix(Fix),
     /// Esc, with no menu open.
     Close,
     /// The page has loaded, which is when dioxus-desktop shows a window made hidden, on macOS
@@ -76,6 +79,8 @@ pub struct State {
     pub mood: Mood,
     pub status: String,
     pub paused: bool,
+    /// What's stopping nudges reaching you, shown in place of the status while it lasts.
+    pub health: Option<Health>,
     /// Counts the times it has opened, so it can take the keyboard focus each time.
     pub opened: u32,
 }
@@ -86,6 +91,7 @@ impl Default for State {
             mood: Mood::Idle,
             status: "Starting…".into(),
             paused: false,
+            health: None,
             opened: 0,
         }
     }
@@ -253,13 +259,18 @@ impl PopoverWindow {
         self.with_popover(|popover, _| popover.settle());
     }
 
-    /// Show the engine's latest view, if it changes what the popover shows.
-    pub fn show(&self, view: &View) {
+    /// Show the engine's latest view, and what's stopping nudges reaching you, if it changes
+    /// what the popover shows.
+    pub fn show(&self, view: &View, health: Option<&Health>) {
         let mut shown = self.shown.borrow_mut();
-        if (shown.mood, &shown.status, shown.paused) != (view.mood, &view.status, view.paused) {
+        let health = health.cloned();
+        if (shown.mood, &shown.status, shown.paused, &shown.health)
+            != (view.mood, &view.status, view.paused, &health)
+        {
             shown.mood = view.mood;
             shown.status = view.status.clone();
             shown.paused = view.paused;
+            shown.health = health;
             let _ = self.states.unbounded_send(shown.clone());
         }
     }
@@ -339,9 +350,24 @@ pub fn Popover(link: Link) -> Element {
                     if current.paused { "Paused" } else { "On" }
                 }
             }
-            p { class: "popover-status mood-{current.mood:?}", role: "status",
-                PostureMark { mood: current.mood }
-                "{current.status}"
+            if let Some(health) = current.health.clone() {
+                div { class: "popover-health mood-{current.mood:?}", role: "status",
+                    div { class: "health-top",
+                        PostureMark { mood: current.mood }
+                        span { class: "health-title", "{health.title}" }
+                    }
+                    div { class: "health-bottom",
+                        span { class: "health-count", "{health.count.clone().unwrap_or_default()}" }
+                        if let Some(fix) = health.fix {
+                            button { class: "health-fix", onclick: move |_| send(Action::Fix(fix)), "{fix.label}" }
+                        }
+                    }
+                }
+            } else {
+                p { class: "popover-status mood-{current.mood:?}", role: "status",
+                    PostureMark { mood: current.mood }
+                    "{current.status}"
+                }
             }
             div { class: "popover-actions",
                 if current.paused {

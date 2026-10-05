@@ -222,14 +222,27 @@ impl Palette {
     }
 }
 
-/// The mark for the tray on a panel in `theme`.
-pub fn tray_svg(mark: Mark, theme: Theme) -> String {
+/// The mark for the tray on a panel in `theme`, struck through while nudges can't reach you. The
+/// letters still move with you, so it never looks frozen.
+pub fn tray_svg(mark: Mark, theme: Theme, struck: bool) -> String {
     let palette = match theme {
         Theme::Day => LIGHT_PANEL,
         Theme::Night => DARK_PANEL,
     };
-    mark.svg(palette.colour(mark))
+    let svg = mark.svg(palette.colour(mark));
+    if struck {
+        let slash = format!(
+            r#"<path d="M4 28 28 4" stroke="{}" stroke-width="{SLASH_STROKE}"/></svg>"#,
+            palette.slouch
+        );
+        svg.replacen("</svg>", &slash, 1)
+    } else {
+        svg
+    }
 }
+
+/// The strike through the mark, a little heavier than its letters so it reads at 16px.
+const SLASH_STROKE: f32 = 3.0;
 
 /// The mark for inline use in a page, coloured by the surrounding text colour.
 pub fn mark_markup(mark: Mark) -> String {
@@ -381,8 +394,8 @@ mod tests {
         for mood in [Mood::Good, Mood::Bad, Mood::Idle, Mood::Paused] {
             let mark = Mark::of(mood);
             svgs.extend([
-                tray_svg(mark, Theme::Day),
-                tray_svg(mark, Theme::Night),
+                tray_svg(mark, Theme::Day, false),
+                tray_svg(mark, Theme::Night, true),
                 mark_markup(mark),
             ]);
         }

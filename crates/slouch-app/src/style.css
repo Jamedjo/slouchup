@@ -386,6 +386,22 @@ button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 .toggle { display: flex; align-items: center; gap: var(--space-2); font-size: 14px; font-weight: 600; }
 .toggle input { width: 20px; height: 20px; margin: 0; accent-color: var(--tomato); }
 .hint { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+.status-line { margin: 0; font-size: 15px; font-weight: 600; }
+/* Under the header while nudges can't reach you. */
+.health-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--butter);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.health-strip p { flex: 1 1 280px; margin: 0; }
+.health-strip .button { border-color: var(--ink); color: var(--ink); background: transparent; }
+.health-strip .button.primary { background: var(--ink); color: var(--butter); }
 .slider { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-3); font-size: 14px; }
 .slider-label { font-weight: 600; }
 .slider-value { color: var(--state-slouch); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -562,6 +578,34 @@ button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 .popover-state.paused { background: var(--surface-raised); color: var(--text-muted); }
 .popover-status { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0; font-size: 14px; line-height: 1.3; }
 .popover-status .mark { width: 24px; height: 24px; }
+/* While nudges can't reach you: the cause on one line, the count and its fix under it. */
+.popover-health { display: flex; flex-direction: column; gap: var(--space-1); font-size: 14px; line-height: 1.3; }
+.health-top { display: flex; align-items: center; gap: 10px; }
+.health-top .mark { position: relative; width: 24px; height: 24px; }
+/* Struck through, as the tray icon is. */
+.health-top .mark::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 50%;
+  border-top: 2px solid var(--state-slouch);
+  transform: rotate(-45deg);
+}
+.health-title { font-weight: 600; }
+.health-bottom { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 28px; padding-left: 34px; }
+.health-count { color: var(--text-muted); }
+.health-fix {
+  flex: none;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--butter);
+  color: var(--ink);
+  font: 600 13px/1 var(--font-body);
+  cursor: pointer;
+}
+.health-fix:hover { background: var(--text-muted); }
 .popover-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .popover-actions .control { justify-content: center; width: 100%; padding: 0 var(--space-3); }
 .control:disabled { opacity: 0.5; cursor: default; }

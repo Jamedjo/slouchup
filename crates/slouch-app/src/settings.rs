@@ -8,6 +8,7 @@ use posture::{Settings, Thresholds};
 use crate::art::Theme;
 use crate::config::{self, APP_NAME, Preferences};
 use crate::engine::{Change, Command};
+use crate::notification_access::NotificationsSection;
 use crate::ui::Bridge;
 
 /// The head-drop slider's range, in face sizes.
@@ -23,6 +24,8 @@ pub fn SettingsPage(
     initial: Settings,
     calibrated: Thresholds,
     on_calibrate: Callback<()>,
+    /// Nudges today that couldn't show.
+    missed: u32,
 ) -> Element {
     let bridge = use_context::<Bridge>();
     // The engine applies and saves each change; this view only shows what it last chose.
@@ -99,6 +102,8 @@ pub fn SettingsPage(
                     }
                 }
             }
+
+            NotificationsSection { welcome: false, missed }
 
             section {
                 div { class: "section-head",

@@ -1,23 +1,34 @@
-//! Notifications on macOS, through the UserNotifications framework: posting them, and hearing
-//! their buttons.
+//! Notifications on macOS, through the UserNotifications framework: asking to show them, reading
+//! whether you said yes, posting them, and hearing their buttons.
 //!
 //! Everything goes through UserNotifications, because once an app registers with it, macOS silently
 //! drops the app's notifications sent the older way, as notify-rust sends them.
 
 use std::collections::HashMap;
+use std::ptr::NonNull;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use block2::RcBlock;
 use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
+use objc2::runtime::{Bool, ProtocolObject};
 use objc2::{AllocAnyThread, define_class, msg_send};
-use objc2_foundation::{NSArray, NSBundle, NSError, NSObject, NSObjectProtocol, NSSet, NSString};
-use objc2_user_notifications::{
-    UNMutableNotificationContent, UNNotification, UNNotificationAction,
-    UNNotificationActionOptions, UNNotificationCategory, UNNotificationCategoryOptions,
-    UNNotificationPresentationOptions, UNNotificationRequest, UNNotificationResponse,
-    UNUserNotificationCenter, UNUserNotificationCenterDelegate,
+use objc2_foundation::{
+    NSArray, NSBundle, NSError, NSObject, NSObjectProtocol, NSProcessInfo, NSSet, NSString,
 };
+use objc2_user_notifications::{
+    UNAlertStyle, UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent,
+    UNNotification, UNNotificationAction, UNNotificationActionOptions, UNNotificationCategory,
+    UNNotificationCategoryOptions, UNNotificationPresentationOptions, UNNotificationRequest,
+    UNNotificationResponse, UNNotificationSettings, UNUserNotificationCenter,
+    UNUserNotificationCenterDelegate,
+};
+
+use crate::notification_access::Access;
+
+/// The installed app's `CFBundleIdentifier`, from `packaging/macos/Info.plist`.
+const BUNDLE_ID: &str = "dev.weareframes.slouchup";
 
 /// A kind of notification with buttons, each button an action id and its label.
 pub struct Category {
@@ -113,6 +124,59 @@ pub fn withdraw(id: &str) {
     }
 }
 
+/// Whether notifications may show, or `None` if that can't be read.
+pub fn access() -> Option<Access> {
+    let center = center()?;
+    // The answer comes on a private queue, so waiting for it here can't deadlock.
+    let (tx, rx) = mpsc::channel();
+    let handler = RcBlock::new(move |settings: NonNull<UNNotificationSettings>| {
+        let settings = unsafe { settings.as_ref() };
+        let _ = tx.send((settings.authorizationStatus(), settings.alertStyle()));
+    });
+    center.getNotificationSettingsWithCompletionHandler(&handler);
+    let (status, style) = rx.recv_timeout(Duration::from_secs(2)).ok()?;
+    Some(match status {
+        UNAuthorizationStatus::NotDetermined => Access::NotAsked,
+        UNAuthorizationStatus::Denied => Access::Off,
+        _ if style == UNAlertStyle::None => Access::Quiet,
+        _ => Access::On {
+            fleeting: style == UNAlertStyle::Banner,
+        },
+    })
+}
+
+/// Have macOS ask whether SlouchUp may show notifications. It asks only once; after that the
+/// answer is changed in System Settings.
+pub fn ask() {
+    let Some(center) = center() else { return };
+    let options = UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound;
+    let handler = RcBlock::new(|granted: Bool, error: *mut NSError| {
+        if let Some(error) = unsafe { error.as_ref() } {
+            tracing::warn!("couldn't ask to notify: {}", error.localizedDescription());
+        } else {
+            tracing::info!("notifications allowed: {}", granted.as_bool());
+        }
+    });
+    center.requestAuthorizationWithOptions_completionHandler(options, &handler);
+}
+
+/// Open System Settings on SlouchUp's notifications, which moved in Ventura's redesign.
+pub fn open_settings() {
+    let ventura = NSProcessInfo::processInfo()
+        .operatingSystemVersion()
+        .majorVersion
+        >= 13;
+    let pane = if ventura {
+        "com.apple.Notifications-Settings.extension"
+    } else {
+        "com.apple.preference.notifications"
+    };
+    let url = format!("x-apple.systempreferences:{pane}?id={}", BUNDLE_ID);
+    if let Err(error) = std::process::Command::new("open").arg(url).spawn() {
+        tracing::warn!("couldn't open System Settings: {error}");
+    }
+}
+
 define_class!(
     #[unsafe(super(NSObject))]
     #[name = "SlouchUpNotificationDelegate"]
@@ -155,5 +219,14 @@ impl Delegate {
     fn new() -> Retained<Self> {
         let this = Self::alloc().set_ivars(());
         unsafe { msg_send![super(this), init] }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bundle_id_matches_the_info_plist() {
+        let plist = include_str!("../../../packaging/macos/Info.plist");
+        assert!(plist.contains(&format!("<string>{}</string>", super::BUNDLE_ID)));
     }
 }

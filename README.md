@@ -23,7 +23,8 @@ status and has:
 
 - **Show camera** — SlouchUp's window, on your camera with the baseline and slouch lines, and how
   close each measure is to its limit. Its header switches between the Camera, History and Settings
-  views.
+  views. Calibrate, under the picture, offers a quick calibration or the guided, full-screen one,
+  as does the C key.
 - **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
   your screens, slouching, and leaning in, then set the limits halfway between.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.

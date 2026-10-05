@@ -329,6 +329,37 @@ fn panel_theme() -> Theme {
 /// How often to check whether the panel has changed theme, say for night mode.
 const PANEL_CHECK: Duration = Duration::from_secs(2);
 
+/// The window's keyboard shortcut: C opens the Calibrate choice. Sent on as a name, and left
+/// alone while typing or with a modifier, so it doesn't take over other keys.
+const SHORTCUTS: &str = r#"
+document.addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+    if (event.target.closest("input, select, textarea")) return;
+    if (event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        dioxus.send("calibrate");
+    }
+});
+await new Promise(() => {});
+"#;
+
+/// Move focus between the elements matching `selector` for an arrow, Home or End `key`, as a
+/// list does, and say whether it was one of those.
+fn move_focus(selector: &str, key: &Key) -> bool {
+    let step = match key {
+        Key::ArrowDown | Key::ArrowRight => "(i + 1) % all.length",
+        Key::ArrowUp | Key::ArrowLeft => "(i - 1 + all.length) % all.length",
+        Key::Home => "0",
+        Key::End => "all.length - 1",
+        _ => return false,
+    };
+    document::eval(&format!(
+        "const all = [...document.querySelectorAll('{selector}')]; \
+         const i = all.indexOf(document.activeElement); all[{step}]?.focus();"
+    ));
+    true
+}
+
 /// `say`, but only the first time it's called, so a notice comes once a run.
 fn once(say: impl Fn() + 'static) -> std::rc::Rc<dyn Fn()> {
     let said = std::cell::Cell::new(false);
@@ -396,6 +427,16 @@ pub fn App() -> Element {
         }
     });
     let mut page = use_signal(|| bridge.start_on);
+    let mut calibrate_open = use_signal(|| false);
+    use_future(move || async move {
+        let mut keys = document::eval(SHORTCUTS);
+        while let Ok(key) = keys.recv::<String>().await {
+            if key == "calibrate" && !paused() {
+                page.set(Page::Camera);
+                calibrate_open.set(true);
+            }
+        }
+    });
     let open_page = use_callback(move |to: Page| {
         page.set(to);
         show_main_window();
@@ -613,7 +654,7 @@ pub fn App() -> Element {
             }
             main { class: "view",
                 match shown {
-                    Page::Camera => rsx! { CameraPage { current: view(), start_game } },
+                    Page::Camera => rsx! { CameraPage { current: view(), paused: paused(), start_game, calibrate_open } },
                     Page::History => rsx! { HistoryPage {} },
                     Page::Settings => rsx! { SettingsPage { initial: view.peek().settings } },
                 }
@@ -622,9 +663,15 @@ pub fn App() -> Element {
     }
 }
 
-/// The live picture with its lines and readings, and the ways to calibrate.
+/// The live picture with its lines and readings, and a bar under it, as video calls have, with
+/// Calibrate.
 #[component]
-fn CameraPage(current: View, start_game: Callback<()>) -> Element {
+fn CameraPage(
+    current: View,
+    paused: bool,
+    start_game: Callback<()>,
+    calibrate_open: Signal<bool>,
+) -> Element {
     let bridge = use_context::<Bridge>();
     let (frame_width, frame_height) = current.frame_size;
     let down = |y: f32| y / frame_height * 100.0;
@@ -655,13 +702,96 @@ fn CameraPage(current: View, start_game: Callback<()>) -> Element {
                     }
                 }
             }
-            div { class: "buttons",
-                button { class: "button primary", onclick: move |_| start_game(()), "Calibration game" }
-                button { class: "button", onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
+            div { class: "controls",
+                if !paused {
+                    CalibrateMenu {
+                        open: calibrate_open,
+                        on_quick: move |()| bridge.send(Command::Recalibrate),
+                        on_guided: start_game,
+                    }
+                }
             }
         }
     }
 }
+
+/// One Calibrate button, opening the choice between a quick one and the guided, full-screen one.
+#[component]
+fn CalibrateMenu(open: Signal<bool>, on_quick: Callback<()>, on_guided: Callback<()>) -> Element {
+    let mut button = use_signal(|| None::<std::rc::Rc<MountedData>>);
+    let mut close = move || {
+        open.set(false);
+        if let Some(button) = button() {
+            spawn(async move {
+                let _ = button.set_focus(true).await;
+            });
+        }
+    };
+    let choices = [
+        (
+            "Quick",
+            "Sit nicely for 3 seconds. Handy after you move your laptop or chair.",
+            on_quick,
+        ),
+        (
+            "Guided, full screen",
+            "Step by step, about 30 seconds. Best the first time, or at a new desk.",
+            on_guided,
+        ),
+    ];
+    rsx! {
+        div { class: "calibrate",
+            button {
+                class: "control primary calibrate-button",
+                title: "Calibrate (C)",
+                "aria-haspopup": "menu",
+                "aria-expanded": "{open()}",
+                onmounted: move |event| button.set(Some(event.data())),
+                onclick: move |_| open.toggle(),
+                "Calibrate"
+                span { class: "icon caret", dangerous_inner_html: CARET_UP }
+            }
+            if open() {
+                div { class: "backdrop", onclick: move |_| close() }
+                div {
+                    class: "calibrate-menu",
+                    role: "menu",
+                    "aria-label": "Calibrate",
+                    onkeydown: move |event| match event.key() {
+                        Key::Escape => {
+                            event.prevent_default();
+                            close();
+                        }
+                        key => {
+                            if move_focus(".calibrate-option", &key) {
+                                event.prevent_default();
+                            }
+                        }
+                    },
+                    for (index, (name, detail, choose)) in choices.into_iter().enumerate() {
+                        button {
+                            class: "calibrate-option",
+                            role: "menuitem",
+                            onmounted: move |event| async move {
+                                if index == 0 {
+                                    let _ = event.data().set_focus(true).await;
+                                }
+                            },
+                            onclick: move |_| {
+                                close();
+                                choose(());
+                            },
+                            span { class: "calibrate-name", "{name}" }
+                            span { class: "calibrate-detail", "{detail}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+const CARET_UP: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>"#;
 
 /// The tray's up/dn mark for `mood`, inline, in the colour of the text around them.
 #[component]

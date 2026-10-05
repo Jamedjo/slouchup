@@ -1,23 +1,23 @@
 ---
 import Band from "./Band.astro";
-import Eyes from "./Eyes.astro";
-import type { Mood } from "../brand/eyes";
+import TrayMark from "./TrayMark.astro";
+import type { State } from "../brand/tray";
 
-const states: { mood: Mood; label: string }[] = [
-  { mood: "upright", label: "Sitting tall" },
-  { mood: "slouch", label: "Sinking" },
-  { mood: "lost", label: "Can't see you" },
+const states: { state: State; label: string }[] = [
+  { state: "upright", label: "Sitting tall" },
+  { state: "slouch", label: "Sinking" },
+  { state: "lost", label: "Out of frame" },
 ];
 ---
 
 <Band ground="ink" strip>
   <div class="strip">
-    <p>Lives in your tray.<br />Its eyes tell you how you're doing.</p>
+    <p>Lives in your tray.<br />Sinks when you do.</p>
     <ul>
       {
-        states.map(({ mood, label }) => (
-          <li class={mood}>
-            <Eyes mood={mood} size={40} />
+        states.map(({ state, label }) => (
+          <li class={state}>
+            <TrayMark state={state} size={40} />
             {label}
           </li>
         ))
@@ -31,7 +31,7 @@ const states: { mood: Mood; label: string }[] = [
   p { flex: 1 1 260px; margin: 0; font: var(--weight-display) 1.75rem/1.2 var(--font-display); letter-spacing: -0.02em; }
   ul { display: flex; flex-wrap: wrap; gap: 32px; margin: 0; padding: 0; list-style: none; }
   li { display: flex; align-items: center; gap: 12px; font-weight: 600; }
-  .upright :global(.eyes) { color: var(--state-upright); }
-  .slouch :global(.eyes) { color: var(--state-slouch); }
-  .lost :global(.eyes) { color: var(--state-lost); }
+  .upright :global(.mark) { color: var(--state-upright); }
+  .slouch :global(.mark) { color: var(--state-slouch); }
+  .lost :global(.mark) { color: var(--state-lost); }
 </style>

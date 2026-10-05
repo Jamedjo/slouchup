@@ -1,0 +1,9 @@
+[package]
+name = "tray-popover"
+version = "0.0.4"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Where to put a popover window by a tray icon, and when to show or hide it, without a windowing library"
+
+[dependencies]

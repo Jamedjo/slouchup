@@ -15,6 +15,8 @@ mod history_window;
 mod installed;
 #[cfg(target_os = "linux")]
 mod launcher;
+#[cfg(target_os = "macos")]
+mod mac_notify;
 mod notifier;
 mod onboarding;
 mod screens;
@@ -61,6 +63,9 @@ fn main() {
     let files = art::write_files(&cache).expect("writing artwork to the cache directory");
     if args.test_notification {
         Notifier::new(files, Arc::new(|| {})).nag("You're 20% closer to the screen than usual.");
+        // macOS posts in the background, which ends with the app.
+        #[cfg(target_os = "macos")]
+        std::thread::sleep(std::time::Duration::from_secs(1));
         return;
     }
     // The demo runs alongside the real app, so screenshots don't mean quitting it.

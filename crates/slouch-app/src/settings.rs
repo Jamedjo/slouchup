@@ -1,8 +1,5 @@
-//! The settings window: which camera to use, the slouch limits, and how eagerly to nag.
+//! The settings view: which camera to use, the slouch limits, and how eagerly to nag.
 //! Changes apply as they're made.
-
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::prelude::*;
 use posture::{Settings, Thresholds};
@@ -13,27 +10,13 @@ use crate::engine::{Change, Command};
 use crate::source;
 use crate::ui::Bridge;
 
-/// What the settings window needs from the app, and a flag saying whether it's open.
-#[derive(Clone)]
-pub struct SettingsHandle {
-    pub bridge: Bridge,
-    pub open: Arc<AtomicBool>,
-}
-
-impl PartialEq for SettingsHandle {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.open, &other.open)
-    }
-}
-
 #[component]
-pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
-    let open = handle.open.clone();
-    use_drop(move || open.store(false, Ordering::Relaxed));
+pub fn SettingsPage(initial: Settings) -> Element {
+    let bridge = use_context::<Bridge>();
     let cameras = use_hook(source::list_cameras);
-    // The engine applies and saves each change; this window only shows what it last chose.
+    // The engine applies and saves each change; this view only shows what it last chose.
     let mut preferences = use_signal(|| Preferences {
-        camera: if handle.bridge.persist {
+        camera: if bridge.persist {
             config::load_preferences().camera
         } else {
             None
@@ -41,19 +24,23 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
         grace: initial.grace,
         min_gap: initial.min_gap,
         cooldown: initial.cooldown,
-        keep_history: !handle.bridge.persist || config::load_preferences().keep_history,
+        keep_history: !bridge.persist || config::load_preferences().keep_history,
         ..Preferences::default()
     });
     let mut cleared = use_signal(|| false);
     let mut thresholds = use_signal(|| initial.thresholds);
-    let bridge = handle.bridge.clone();
-    let send = use_callback(move |change: Change| bridge.send(Command::Change(change)));
+    let send = use_callback({
+        let bridge = bridge.clone();
+        move |change: Change| bridge.send(Command::Change(change))
+    });
 
-    let bridge = handle.bridge.clone();
-    let mut choose_camera = move |id: String| {
-        let id = (!id.is_empty()).then_some(id);
-        preferences.with_mut(|p| p.camera = id.clone());
-        bridge.send(Command::UseCamera(id));
+    let mut choose_camera = {
+        let bridge = bridge.clone();
+        move |id: String| {
+            let id = (!id.is_empty()).then_some(id);
+            preferences.with_mut(|p| p.camera = id.clone());
+            bridge.send(Command::UseCamera(id));
+        }
     };
 
     let chosen = preferences();
@@ -140,7 +127,7 @@ pub fn SettingsPage(handle: SettingsHandle, initial: Settings) -> Element {
                     class: "button",
                     disabled: cleared(),
                     onclick: {
-                        let bridge = handle.bridge.clone();
+                        let bridge = bridge.clone();
                         move |_| {
                             bridge.send(Command::ClearHistory);
                             cleared.set(true);

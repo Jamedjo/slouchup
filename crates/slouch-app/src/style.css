@@ -1,5 +1,5 @@
 /* The app's rules, on the design system's tokens in tokens.css. Each window's root picks a theme:
-   day for settings, night for the camera window and the calibration game. */
+   night for the app's window and the calibration game, day for its history and settings views. */
 
 html, body {
   margin: 0;
@@ -44,18 +44,72 @@ html, body {
 .progress { height: 10px; border-radius: 5px; background: var(--track); overflow: hidden; }
 .progress > span { display: block; height: 100%; background: var(--tomato); }
 
-/* Camera window */
+/* The app's window: a header with the views, then the view */
 
 .app {
+  --header: 60px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The wordmark at the left, and the views in the middle of the window. */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--header);
+  box-sizing: border-box;
+  padding: 0 var(--space-4);
+  border-bottom: 2px solid var(--surface-raised);
+}
+.brand { display: flex; align-items: center; }
+.brand .wordmark { padding-top: var(--rise-up-small); font-size: 22px; line-height: 1; }
+.brand .up { top: calc(var(--rise-up-small) * -1); }
+
+/* Navigation between the views, grouped in one track so it reads as a place to go, not an action. */
+.views {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+}
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px 0 11px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 14px/1 var(--font-body);
+  cursor: pointer;
+}
+.view-tab:hover { color: var(--text); }
+.view-tab[aria-current="page"] { background: var(--butter); color: var(--ink); }
+.icon, .icon svg { display: block; flex: none; width: 18px; height: 18px; }
+
+button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.view { flex: 1; min-height: 0; }
+.view > [data-theme] { height: 100%; }
+
+.camera-page {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  height: 100%;
+  box-sizing: border-box;
   padding: var(--space-4);
 }
 
 .stage {
-  /* Height the window keeps for its padding, the buttons and the frame's border. */
-  --chrome: calc(3 * var(--space-4) + 44px + 6px);
+  /* Height the window keeps for its header, its padding, the buttons and the frame's border. */
+  --chrome: calc(var(--header) + 3 * var(--space-4) + 44px + 6px);
   position: relative;
   flex: none;
   margin: 0 auto;
@@ -143,7 +197,12 @@ html, body {
 }
 
 .buttons { display: flex; gap: var(--space-2); }
-.app .button { flex: 1; }
+.camera-page .button { flex: 1; }
+
+@media (max-width: 600px) {
+  .view-label { display: none; }
+  .view-tab { padding: 0 11px; }
+}
 
 /* Calibration game, full screen */
 
@@ -218,7 +277,7 @@ html, body {
 .slider-value { color: var(--state-slouch); font-weight: 600; font-variant-numeric: tabular-nums; }
 .slider input { grid-column: 1 / -1; width: 100%; min-height: 28px; margin: 0; accent-color: var(--tomato); }
 
-/* First run: the camera window's welcome, in the settings window's day look */
+/* First run: the camera window's welcome, in the settings view's day look */
 
 .onboarding h1 { padding-top: var(--rise-up); }
 .onboarding .lede { margin: 0; font-size: 17px; }

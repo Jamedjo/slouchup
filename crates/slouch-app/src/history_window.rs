@@ -1,41 +1,25 @@
-//! The history window: how you've sat today, in quarter hours, and over the last week.
+//! The history view: how you've sat today, in quarter hours, and over the last week.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, Local, Timelike};
 use dioxus::prelude::*;
 
 use crate::art::Theme;
-use crate::engine::SharedHistory;
 use crate::history::{History, Tally, midnight};
+use crate::ui::Bridge;
 
 const SLOT_MINUTES: i64 = 15;
 const REFRESH: Duration = Duration::from_secs(15);
 /// The day's chart starts here at the latest, so a morning with nothing yet still has a frame.
 const EARLIEST_START_HOUR: u32 = 8;
 
-/// What the history window needs from the app, and a flag saying whether it's open.
-#[derive(Clone)]
-pub struct HistoryHandle {
-    pub history: SharedHistory,
-    pub open: Arc<AtomicBool>,
-}
-
-impl PartialEq for HistoryHandle {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.open, &other.open)
-    }
-}
-
 #[component]
-pub fn HistoryPage(handle: HistoryHandle) -> Element {
-    let open = handle.open.clone();
-    use_drop(move || open.store(false, Ordering::Relaxed));
-    let mut shown = use_signal(|| handle.history.lock().unwrap().clone());
+pub fn HistoryPage() -> Element {
+    let history = use_context::<Bridge>().history;
+    let mut shown = use_signal(|| history.lock().unwrap().clone());
     use_future(move || {
-        let history = handle.history.clone();
+        let history = history.clone();
         async move {
             loop {
                 futures_timer::Delay::new(REFRESH).await;

@@ -5,12 +5,12 @@ use dioxus::prelude::*;
 
 use crate::art::{Mood, Theme};
 use crate::source;
-use crate::ui::Eyes;
+use crate::ui::PostureMark;
 
 const MOODS: [(Mood, &str); 4] = [
     (Mood::Good, "Sitting tall"),
     (Mood::Bad, "Sinking"),
-    (Mood::Idle, "Can't see you"),
+    (Mood::Idle, "Out of frame"),
     (Mood::Paused, "Paused"),
 ];
 
@@ -40,7 +40,7 @@ pub fn Onboarding(
                 span { class: "wordmark", "slouch", span { class: "up", "up" } }
             }
             p { class: "lede",
-                "I watch your posture through your webcam and nudge you once when you start to slouch. Everything happens on your computer."
+                "I nudge you once when your head starts to sink. Everything runs on your computer, and video never leaves it."
             }
             section {
                 h2 { "Camera" }
@@ -62,7 +62,7 @@ pub fn Onboarding(
                 h2 { "Where to find me" }
                 div { class: "tray-moods",
                     for (mood, label) in MOODS {
-                        span { class: "tray-mood mood-{mood:?}", Eyes { mood }, "{label}" }
+                        span { class: "tray-mood mood-{mood:?}", PostureMark { mood }, "{label}" }
                     }
                 }
                 p { class: "hint", "{TRAY_HOME}" }

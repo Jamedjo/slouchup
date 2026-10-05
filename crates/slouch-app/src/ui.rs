@@ -1,7 +1,8 @@
 //! The tray, the camera window, and the full-screen "look here" prompt used by the calibration game.
 
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Sender;
 use dioxus::desktop::tao::event::{Event, WindowEvent};
@@ -17,7 +18,7 @@ use dioxus::prelude::*;
 use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::StreamExt;
 
-use crate::art::{self, Files, Mood, Theme};
+use crate::art::{self, Files, Mark, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
@@ -70,18 +71,112 @@ struct Tray {
     pause: MenuItem,
     snooze: MenuItem,
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
-    shown: std::cell::RefCell<Shown>,
+    shown: RefCell<Shown>,
+    slide: RefCell<Slide>,
+    /// Whether a task is redrawing the icon until the slide settles.
+    sliding: Cell<bool>,
 }
 
 struct Shown {
-    mood: Mood,
+    mark: Mark,
     theme: Theme,
     status: String,
     snoozed: bool,
 }
 
-fn tray_icon(mood: Mood, theme: Theme) -> Icon {
-    Icon::from_rgba(art::rasterise(&art::tray_svg(mood, theme), 64, 64), 64, 64)
+/// The tray's letters easing towards where the latest reading puts them.
+struct Slide {
+    target: Mark,
+    from: f32,
+    started: Instant,
+}
+
+impl Slide {
+    fn settled_at(target: Mark) -> Self {
+        Self {
+            target,
+            from: target.dy(),
+            started: Instant::now() - art::SLIDE,
+        }
+    }
+
+    /// The target, with its letters part way from where they were. Turning over isn't eased.
+    fn at(&self, now: Instant) -> Mark {
+        let progress = (now - self.started).as_secs_f32() / art::SLIDE.as_secs_f32();
+        match self.target {
+            Mark::Live { dy, down } if progress < 1.0 => {
+                let eased = 1.0 - (1.0 - progress).powi(3);
+                Mark::Live {
+                    dy: self.from + (dy - self.from) * eased,
+                    down,
+                }
+            }
+            target => target,
+        }
+    }
+
+    fn head_for(&mut self, target: Mark, now: Instant) {
+        if worth_moving(self.target, target) {
+            self.from = self.at(now).dy();
+            self.target = target;
+            self.started = now;
+        }
+    }
+
+    fn settled(&self, now: Instant) -> bool {
+        now - self.started >= art::SLIDE
+    }
+}
+
+/// Readings wobble a little while you sit still, and every redraw goes over D-Bus, so the letters
+/// only set off for a move of at least this many grid units.
+const LEAST_MOVE: f32 = 0.5;
+
+fn worth_moving(from: Mark, to: Mark) -> bool {
+    match (from, to) {
+        (Mark::Live { down, .. }, Mark::Live { down: to_down, .. }) if down == to_down => {
+            (to.dy() - from.dy()).abs() >= LEAST_MOVE
+        }
+        _ => from != to,
+    }
+}
+
+/// How often the icon is redrawn while the letters slide.
+const SLIDE_FRAME: Duration = Duration::from_millis(30);
+/// The smallest move of the letters worth redrawing for, in the mark's grid units: half a pixel
+/// of the 64px icon.
+const DRAWN_STEP: f32 = 0.25;
+
+/// The mark the view calls for. `was_down` is whether it read "dn" before, for the hysteresis.
+fn tray_mark(view: &View, was_down: bool) -> Mark {
+    match view.mood {
+        Mood::Good | Mood::Bad => {
+            let limits = view.settings.thresholds;
+            let t = view.reading.map_or(0.0, |reading| {
+                art::slouch_t(reading.drop, limits.drop, reading.lean, limits.lean)
+            });
+            Mark::Live {
+                dy: art::letters_dy(t),
+                down: art::reads_down(was_down, t),
+            }
+        }
+        Mood::Idle => Mark::Lost,
+        Mood::Paused => Mark::Paused,
+    }
+}
+
+fn rounded(mark: Mark) -> Mark {
+    match mark {
+        Mark::Live { dy, down } => Mark::Live {
+            dy: (dy / DRAWN_STEP).round() * DRAWN_STEP,
+            down,
+        },
+        other => other,
+    }
+}
+
+fn tray_icon(mark: Mark, theme: Theme) -> Icon {
+    Icon::from_rgba(art::rasterise(&art::tray_svg(mark, theme), 64, 64), 64, 64)
         .expect("icon is 64x64")
 }
 
@@ -100,7 +195,7 @@ fn snooze_label(snoozed: bool) -> String {
 impl Tray {
     fn new(theme: Theme, paused: bool) -> Self {
         let shown = Shown {
-            mood: if paused { Mood::Paused } else { Mood::Idle },
+            mark: if paused { Mark::Paused } else { Mark::Lost },
             theme,
             status: "Starting…".into(),
             snoozed: false,
@@ -124,7 +219,7 @@ impl Tray {
         .expect("tray menu builds");
         let icon = dioxus::desktop::trayicon::init_tray_icon(
             menu,
-            Some(tray_icon(shown.mood, shown.theme)),
+            Some(tray_icon(shown.mark, shown.theme)),
         );
         let _ = icon.set_tooltip(Some(APP_NAME));
         // appindicator has no tooltip; panels show its title, which falls back to GLib's app name.
@@ -135,16 +230,22 @@ impl Tray {
             status,
             pause,
             snooze,
+            slide: Slide::settled_at(shown.mark).into(),
             shown: shown.into(),
+            sliding: false.into(),
         }
     }
 
-    fn show(&self, view: &View) {
-        let mut shown = self.shown.borrow_mut();
-        if shown.mood != view.mood {
-            shown.mood = view.mood;
-            let _ = self.icon.set_icon(Some(tray_icon(shown.mood, shown.theme)));
+    /// Show `view`, and say whether the letters have started sliding and need redrawing.
+    fn show(&self, view: &View) -> bool {
+        let now = Instant::now();
+        {
+            let mut slide = self.slide.borrow_mut();
+            let was_down = matches!(slide.target, Mark::Live { down: true, .. });
+            slide.head_for(tray_mark(view, was_down), now);
         }
+        let sliding = self.redraw();
+        let mut shown = self.shown.borrow_mut();
         if shown.status != view.status {
             self.status.set_text(&view.status);
             shown.status = view.status.clone();
@@ -153,13 +254,27 @@ impl Tray {
             self.snooze.set_text(snooze_label(view.snoozed));
             shown.snoozed = view.snoozed;
         }
+        sliding
+    }
+
+    /// Draw the letters where the slide has them now, and say whether they're still moving.
+    fn redraw(&self) -> bool {
+        let now = Instant::now();
+        let slide = self.slide.borrow();
+        let mark = rounded(slide.at(now));
+        let mut shown = self.shown.borrow_mut();
+        if shown.mark != mark {
+            shown.mark = mark;
+            let _ = self.icon.set_icon(Some(tray_icon(shown.mark, shown.theme)));
+        }
+        !slide.settled(now)
     }
 
     fn suit_panel(&self, theme: Theme) {
         let mut shown = self.shown.borrow_mut();
         if shown.theme != theme {
             shown.theme = theme;
-            let _ = self.icon.set_icon(Some(tray_icon(shown.mood, shown.theme)));
+            let _ = self.icon.set_icon(Some(tray_icon(shown.mark, shown.theme)));
         }
     }
 }
@@ -420,7 +535,18 @@ pub fn App() -> Element {
         let tray = tray.clone();
         move || {
             let current = view.read();
-            tray.show(&current);
+            if tray.show(&current) && !tray.sliding.replace(true) {
+                let tray = tray.clone();
+                spawn(async move {
+                    loop {
+                        futures_timer::Delay::new(SLIDE_FRAME).await;
+                        if !tray.redraw() {
+                            break;
+                        }
+                    }
+                    tray.sliding.set(false);
+                });
+            }
         }
     });
 
@@ -521,7 +647,7 @@ pub fn App() -> Element {
                     BannerView { banner: banner.clone() }
                 }
                 div { class: "status mood-{current.mood:?}",
-                    Eyes { mood: current.mood }
+                    PostureMark { mood: current.mood }
                     "{current.status}"
                     if current.snoozed {
                         span { class: "snoozed", "Nudges snoozed" }
@@ -538,11 +664,11 @@ pub fn App() -> Element {
     }
 }
 
-/// The tray's eyes, inline, in the colour of the text around them.
+/// The tray's up/dn mark for `mood`, inline, in the colour of the text around them.
 #[component]
-pub fn Eyes(mood: Mood) -> Element {
+pub fn PostureMark(mood: Mood) -> Element {
     rsx! {
-        span { class: "eyes", dangerous_inner_html: art::eyes_markup(mood) }
+        span { class: "mark", dangerous_inner_html: art::mark_markup(Mark::of(mood)) }
     }
 }
 
@@ -642,7 +768,67 @@ fn LookHere(step: SharedLookAt, slot: FrameSlot) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::split_at_up;
+    use super::*;
+
+    #[test]
+    fn tray_letters_ease_to_a_new_height_but_turn_over_at_once() {
+        let start = Instant::now();
+        let mut slide = Slide::settled_at(Mark::Live {
+            dy: 0.0,
+            down: false,
+        });
+        slide.head_for(
+            Mark::Live {
+                dy: 8.0,
+                down: true,
+            },
+            start,
+        );
+        let Mark::Live { dy, down } = slide.at(start + art::SLIDE / 2) else {
+            panic!("still live");
+        };
+        assert!(down);
+        assert!(dy > 4.0 && dy < 8.0, "eased out: {dy}");
+        assert!(!slide.settled(start + art::SLIDE / 2));
+        assert_eq!(
+            slide.at(start + art::SLIDE),
+            Mark::Live {
+                dy: 8.0,
+                down: true
+            }
+        );
+        assert!(slide.settled(start + art::SLIDE));
+    }
+
+    #[test]
+    fn tray_letters_stay_put_for_a_wobble() {
+        let still = Mark::Live {
+            dy: 2.0,
+            down: false,
+        };
+        assert!(!worth_moving(
+            still,
+            Mark::Live {
+                dy: 2.3,
+                down: false
+            }
+        ));
+        assert!(worth_moving(
+            still,
+            Mark::Live {
+                dy: 2.5,
+                down: false
+            }
+        ));
+        assert!(worth_moving(
+            still,
+            Mark::Live {
+                dy: 2.0,
+                down: true
+            }
+        ));
+        assert!(worth_moving(still, Mark::Lost));
+    }
 
     #[test]
     fn up_rises_only_as_a_whole_word() {

@@ -150,7 +150,7 @@ pub fn still_running(files: &Files) {
     in_tray(
         files,
         &format!("{APP_NAME} is still running"),
-        "It's in your tray, keeping an eye on your posture.",
+        "It's in your tray, ready to nudge you when your head drops.",
     );
 }
 

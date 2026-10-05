@@ -1,10 +1,11 @@
 //! The app's artwork, drawn as SVG so the tray, windows, notifications and launcher share one source.
 //!
-//! The app icon is the slouching p, and the nudge carries the wordmark's "up". The tray carries a
-//! pair of eyes on a 24px grid whose shape says how you're sitting, so it still reads where colour
-//! doesn't. Colours are the design system's, from `tokens.css`.
+//! The app icon is the slouching p, and the nudge carries the wordmark's "up". The tray carries the
+//! up/dn mark: "up" in a frame, sinking as you do and turning over to read "dn" past your limit, so
+//! it still reads where colour doesn't. Colours are the design system's, from `tokens.css`.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const BUTTER: &str = "#FFF1C9";
 const INK: &str = "#22201C";
@@ -31,37 +32,6 @@ pub enum Mood {
     Paused,
 }
 
-impl Mood {
-    /// Good looks up, bad drops its lids and sinks, idle closes its eyes and wonders, and paused
-    /// closes them and sleeps.
-    fn eyes(self, colour: &str) -> String {
-        let shapes = match self {
-            Mood::Good => format!(
-                r#"<path d="M3 13a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0M12 13a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0"/>
-<circle cx="7.5" cy="10.6" r="1.7" fill="{colour}" stroke="none"/>
-<circle cx="16.5" cy="10.6" r="1.7" fill="{colour}" stroke="none"/>"#
-            ),
-            Mood::Bad => format!(
-                r#"<circle cx="7.5" cy="12" r="4.5"/><circle cx="16.5" cy="12" r="4.5"/>
-<path d="M3 10.4h9M12 10.4h9"/>
-<circle cx="7.5" cy="14.3" r="1.7" fill="{colour}" stroke="none"/>
-<circle cx="16.5" cy="14.3" r="1.7" fill="{colour}" stroke="none"/>"#
-            ),
-            Mood::Idle => format!(
-                r#"<path d="M3 13c1.6 2.2 7.4 2.2 9 0M12 13c1.6 2.2 7.4 2.2 9 0"/>
-<path d="M17.4 3.6a1.7 1.7 0 1 1 2.4 1.6c-.5.3-.8.6-.8 1.2"/>
-<circle cx="19" cy="8.6" r="0.6" fill="{colour}" stroke="none"/>"#
-            ),
-            Mood::Paused => r#"<path d="M3 13c1.6 2.2 7.4 2.2 9 0M12 13c1.6 2.2 7.4 2.2 9 0"/>
-<path d="M16.6 3.6h3.4l-3.4 4.4h3.4"/>"#
-                .to_string(),
-        };
-        format!(
-            r#"<g fill="none" stroke="{colour}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">{shapes}</g>"#
-        )
-    }
-}
-
 /// The design system's two themes: day for light grounds, night for dark ones.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Theme {
@@ -85,35 +55,185 @@ impl Theme {
             Theme::Night => (0x22, 0x20, 0x1C, 0xFF),
         }
     }
+}
 
-    /// The `state-upright`, `state-slouch` and `state-lost` tokens.
-    fn state(self, mood: Mood) -> &'static str {
-        match (self, mood) {
-            (Theme::Day, Mood::Good) => INK,
-            (Theme::Day, Mood::Bad) => "#C8432A",
-            (Theme::Day, Mood::Idle | Mood::Paused) => "#77726A",
-            (Theme::Night, Mood::Good) => BUTTER,
-            (Theme::Night, Mood::Bad) => "#FF8A6B",
-            (Theme::Night, Mood::Idle | Mood::Paused) => "#A39E93",
+// The up/dn mark, on a 32px grid with round caps and joins and no fill.
+
+/// The mark's position, from 0 at your calibrated posture to 1 well past your limit, where your
+/// limit lands at `FLIP_AT`. It's the further over of the eye drop and the face growth.
+pub fn slouch_t(drop: f32, drop_limit: f32, growth: f32, growth_limit: f32) -> f32 {
+    (FLIP_AT * (drop / drop_limit).max(growth / growth_limit)).clamp(0.0, 1.0)
+}
+
+/// Where the mark turns over to read "dn": your slouch limit.
+pub const FLIP_AT: f32 = 0.6;
+/// Where it turns back to "up", a little under `FLIP_AT` so it can't flicker on the line.
+pub const UNFLIP_BELOW: f32 = 0.55;
+/// How long the letters take to slide to a new height. Turning over is never eased.
+pub const SLIDE: Duration = Duration::from_millis(150);
+
+/// The letters' top at their resting height, before `letters_dy` moves them.
+const LETTERS_TOP: f32 = 8.0;
+/// How far above their resting height the letters sit at t = 0.
+const UPRIGHT_DY: f32 = -4.0;
+/// How far the letters sink from t = 0 to t = 1.
+const SINK: f32 = 13.0;
+/// The x the letters turn over about, the middle of "up". They turn about their x-height midline,
+/// `MIDLINE` below their top, so "dn" sits where "up" did.
+const TURN_X: f32 = 16.5;
+const MIDLINE: f32 = 5.0;
+const LETTERS_STROKE: f32 = 3.2;
+/// Dots for the letters while you're out of frame.
+const LOST_DASHES: &str = "0.1 4.4";
+
+/// The frame's inset from the grid's edge, stroke and corner radius.
+const FRAME_INSET: f32 = 1.0;
+const FRAME_STROKE: f32 = 1.4;
+const FRAME_RADIUS: f32 = 7.0;
+/// The frame's opacity while you're out of frame.
+const LOST_FRAME_OPACITY: f32 = 0.6;
+/// The letters are clipped to the frame's inner edge: this inset and corner radius.
+const CLIP_INSET: f32 = 1.7;
+const CLIP_RADIUS: f32 = 6.3;
+/// The notches on either side of the frame, level with the letters' top at your limit.
+const NOTCH_LENGTH: f32 = 2.2;
+const NOTCH_STROKE: f32 = 3.0;
+
+/// How far the letters are from their resting height at `t`.
+pub fn letters_dy(t: f32) -> f32 {
+    UPRIGHT_DY + SINK * t
+}
+
+/// Whether the mark reads "dn" at `t`, given whether it did before.
+pub fn reads_down(was_down: bool, t: f32) -> bool {
+    t >= if was_down { UNFLIP_BELOW } else { FLIP_AT }
+}
+
+/// What the up/dn mark shows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Mark {
+    /// Following you: the letters `dy` from their resting height, turned over to read "dn" when
+    /// `down`.
+    Live {
+        dy: f32,
+        down: bool,
+    },
+    /// Out of frame, or not following you yet: dotted letters in a faint frame.
+    Lost,
+    Paused,
+}
+
+impl Mark {
+    /// The mark for a mood rather than a reading, as an upright or slouch at either end.
+    pub fn of(mood: Mood) -> Self {
+        match mood {
+            Mood::Good => Mark::Live {
+                dy: letters_dy(0.0),
+                down: false,
+            },
+            Mood::Bad => Mark::Live {
+                dy: letters_dy(1.0),
+                down: true,
+            },
+            Mood::Idle => Mark::Lost,
+            Mood::Paused => Mark::Paused,
+        }
+    }
+
+    pub fn dy(self) -> f32 {
+        match self {
+            Mark::Live { dy, .. } => dy,
+            Mark::Lost | Mark::Paused => 0.0,
+        }
+    }
+
+    fn svg(self, colour: &str) -> String {
+        let top = LETTERS_TOP + self.dy();
+        let dashes = if self == Mark::Lost {
+            format!(r#" stroke-dasharray="{LOST_DASHES}""#)
+        } else {
+            String::new()
+        };
+        let mut letters = format!(
+            r#"<path d="M6 {top:.2} V{u_bottom:.2} a4 4 0 0 0 8 0 V{top:.2}"{dashes}/><path d="M19 {p_bottom:.2} V{top:.2}"{dashes}/><circle cx="23" cy="{middle:.2}" r="4"{dashes}/>"#,
+            u_bottom = top + 6.0,
+            p_bottom = top + 16.0,
+            middle = top + MIDLINE,
+        );
+        if let Mark::Live { down: true, .. } = self {
+            letters = format!(
+                r#"<g transform="rotate(180 {TURN_X} {:.2})">{letters}</g>"#,
+                top + MIDLINE
+            );
+        }
+        let notches = if let Mark::Live { .. } = self {
+            let y = LETTERS_TOP + letters_dy(FLIP_AT);
+            let (left, right) = (
+                FRAME_INSET + NOTCH_LENGTH,
+                32.0 - FRAME_INSET - NOTCH_LENGTH,
+            );
+            format!(
+                r#"<path d="M{FRAME_INSET} {y:.2} H{left:.2} M{right:.2} {y:.2} H{edge}" stroke-width="{NOTCH_STROKE}"/>"#,
+                edge = 32.0 - FRAME_INSET,
+            )
+        } else {
+            String::new()
+        };
+        let frame_opacity = if self == Mark::Lost {
+            LOST_FRAME_OPACITY
+        } else {
+            1.0
+        };
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="{colour}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="mark-inside"><rect x="{CLIP_INSET}" y="{CLIP_INSET}" width="{clip:.2}" height="{clip:.2}" rx="{CLIP_RADIUS}"/></clipPath></defs><rect x="{FRAME_INSET}" y="{FRAME_INSET}" width="{frame:.2}" height="{frame:.2}" rx="{FRAME_RADIUS}" stroke-width="{FRAME_STROKE}" opacity="{frame_opacity}"/>{notches}<g clip-path="url(#mark-inside)" stroke-width="{LETTERS_STROKE}">{letters}</g></svg>"#,
+            clip = 32.0 - 2.0 * CLIP_INSET,
+            frame = 32.0 - 2.0 * FRAME_INSET,
+        )
+    }
+}
+
+/// The mark's colours on a panel: upright, slouching, and grey for out of frame and paused.
+struct Palette {
+    upright: &'static str,
+    slouch: &'static str,
+    grey: &'static str,
+}
+
+/// On a light panel: ink, tomato-text and ash.
+const LIGHT_PANEL: Palette = Palette {
+    upright: INK,
+    slouch: "#C8432A",
+    grey: "#77726A",
+};
+/// On a dark panel: butter, tomato-soft and a lighter grey.
+const DARK_PANEL: Palette = Palette {
+    upright: BUTTER,
+    slouch: "#FF8A6B",
+    grey: "#A39E93",
+};
+
+impl Palette {
+    fn colour(&self, mark: Mark) -> &'static str {
+        match mark {
+            Mark::Live { down: false, .. } => self.upright,
+            Mark::Live { down: true, .. } => self.slouch,
+            Mark::Lost | Mark::Paused => self.grey,
         }
     }
 }
 
-/// The eyes alone, for the tray on a panel in `theme`.
-pub fn tray_svg(mood: Mood, theme: Theme) -> String {
-    eyes_svg(mood, theme.state(mood))
+/// The mark for the tray on a panel in `theme`.
+pub fn tray_svg(mark: Mark, theme: Theme) -> String {
+    let palette = match theme {
+        Theme::Day => LIGHT_PANEL,
+        Theme::Night => DARK_PANEL,
+    };
+    mark.svg(palette.colour(mark))
 }
 
-/// The eyes for inline use in a page, coloured by the surrounding text colour.
-pub fn eyes_markup(mood: Mood) -> String {
-    eyes_svg(mood, "currentColor")
-}
-
-fn eyes_svg(mood: Mood, colour: &str) -> String {
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">{}</svg>"#,
-        mood.eyes(colour)
-    )
+/// The mark for inline use in a page, coloured by the surrounding text colour.
+pub fn mark_markup(mark: Mark) -> String {
+    mark.svg("currentColor")
 }
 
 /// Big friendly eyes looking up, asking you to look at the screen being calibrated.
@@ -258,12 +378,29 @@ mod tests {
     #[test]
     fn every_icon_parses_and_draws_something() {
         let mut svgs = vec![app_icon_svg(), nudge_icon_svg(), looking_up_svg()];
-        for mood in [Mood::Good, Mood::Bad, Mood::Idle] {
-            svgs.extend([tray_svg(mood, Theme::Day), tray_svg(mood, Theme::Night)]);
+        for mood in [Mood::Good, Mood::Bad, Mood::Idle, Mood::Paused] {
+            let mark = Mark::of(mood);
+            svgs.extend([
+                tray_svg(mark, Theme::Day),
+                tray_svg(mark, Theme::Night),
+                mark_markup(mark),
+            ]);
         }
         for svg in svgs {
             let pixels = rasterise(&svg, 32, 32);
             assert!(pixels.chunks(4).any(|p| p[3] > 0), "blank icon: {svg}");
         }
+    }
+
+    #[test]
+    fn mark_turns_over_at_the_slouch_limit_and_back_a_little_under() {
+        assert_eq!(slouch_t(0.8, 0.8, 0.0, 0.15), FLIP_AT);
+        assert_eq!(slouch_t(0.0, 0.8, 0.15, 0.15), FLIP_AT);
+        assert_eq!(slouch_t(-0.5, 0.8, -0.1, 0.15), 0.0);
+        assert_eq!(slouch_t(4.0, 0.8, 0.0, 0.15), 1.0);
+        assert!(!reads_down(false, 0.59));
+        assert!(reads_down(false, 0.6));
+        assert!(reads_down(true, 0.56));
+        assert!(!reads_down(true, 0.54));
     }
 }

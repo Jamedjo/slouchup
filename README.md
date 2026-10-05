@@ -16,9 +16,10 @@ stand-in who sits up, sinks and leans in, while detection runs on it for real.
 
 ## Using it
 
-SlouchUp lives in the system tray as a pair of eyes: they look up while you sit well, drop their
-lids while you slouch, close and wonder when they can't see you, and sleep while you've paused
-them. Its menu shows the current status and has:
+SlouchUp lives in the system tray as the word "up" in a frame. The letters sink as you do, and
+once you pass your slouch limit, marked by notches on the frame, they turn over to read "dn". They
+turn dotted when you're out of frame, and grey while you've paused. Its menu shows the current
+status and has:
 
 - **Show camera** — your camera with the baseline and slouch lines, and how close each measure is
   to its limit.
@@ -28,17 +29,17 @@ them. Its menu shows the current status and has:
 - **History** — how you've sat today, quarter hour by quarter hour, and how much of each of the
   last seven days you spent slouching.
 - **Settings** — which camera to use, the two slouch limits, and how soon and how often to nag.
-- **Snooze for 30 minutes** — no nudges for a while, though it keeps watching. The nudge itself
-  has a Snooze button too.
+- **Snooze for 30 minutes** — no nudges for a while, though the tray icon carries on. The nudge
+  itself has a Snooze button too.
 - **Pause** and **Quit**.
 
 The first time it starts, a welcome asks before turning the camera on, lets you pick which camera,
-and shows the eyes to look for in the tray. Turning the camera on starts the calibration game.
+and shows the icon to look for in the tray. Turning the camera on starts the calibration game.
 
 <img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
 Closing the camera window leaves SlouchUp running in the tray. The first close of each run says so
-in a small window with Keep watching and Quit buttons, and in a notification.
+in a small window with Keep running and Quit buttons, and in a notification.
 
 <img src="docs/screenshots/still-running.png" alt="The window and notification saying SlouchUp is still running, each with a way to quit" width="520">
 

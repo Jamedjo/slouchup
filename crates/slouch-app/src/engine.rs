@@ -31,7 +31,7 @@ const CAMERA_LOST: Duration = Duration::from_secs(4);
 const RETRY_CAMERA: Duration = Duration::from_secs(5);
 /// Laptop lids tilt rarely, so the background needn't be checked every frame.
 const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
-const CANT_SEE_YOU: &str = "I can't see you right now.";
+const OUT_OF_FRAME: &str = "You're out of frame.";
 /// How long Snooze holds back nudges, while watching carries on.
 pub const SNOOZE: Duration = Duration::from_secs(30 * 60);
 
@@ -257,7 +257,7 @@ impl Engine {
                 if std::panic::catch_unwind(run).is_err() {
                     let (notifier, events) = crashed;
                     notifier.info(
-                        &format!("{APP_NAME} stopped watching"),
+                        &format!("{APP_NAME} stopped"),
                         "Something went wrong. Restart it to carry on.",
                     );
                     let _ = events.unbounded_send(View {
@@ -551,7 +551,7 @@ impl Engine {
         let (mood, status, sitting) = match update.state {
             State::Good => (Mood::Good, "Posture good".to_string(), Sitting::Well),
             State::Bad(problem) => (Mood::Bad, problem.to_string(), Sitting::Slouching),
-            State::Away => (Mood::Idle, CANT_SEE_YOU.to_string(), Sitting::Away),
+            State::Away => (Mood::Idle, OUT_OF_FRAME.to_string(), Sitting::Away),
         };
         self.set_status(mood, status);
         if self.recording {
@@ -642,7 +642,7 @@ impl Engine {
         );
         self.start_tracking(baseline, reference);
         self.notifier
-            .info(&format!("{APP_NAME} is watching"), "Calibrated just now.");
+            .info(&format!("{APP_NAME} is on"), "Calibrated just now.");
         true
     }
 
@@ -720,7 +720,7 @@ impl Engine {
                 self.view.status = if seen.face.is_some() {
                     "Calibration game"
                 } else {
-                    CANT_SEE_YOU
+                    OUT_OF_FRAME
                 }
                 .into();
                 self.publish();

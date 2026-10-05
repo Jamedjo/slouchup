@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { upTile } from "../brand/up";
+import appIcon from "../../../crates/slouch-app/src/app-icon.svg?raw";
 
 export const GET: APIRoute = () =>
-  new Response(upTile("app"), { headers: { "Content-Type": "image/svg+xml" } });
+  new Response(appIcon, { headers: { "Content-Type": "image/svg+xml" } });

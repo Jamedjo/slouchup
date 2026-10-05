@@ -3,9 +3,9 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: [www/**, crates/slouch-app/src/person.svg, .github/workflows/pages.yml]
+    paths: [www/**, crates/slouch-app/src/person.svg, crates/slouch-app/src/app-icon.svg, .github/workflows/pages.yml]
   pull_request:
-    paths: [www/**, crates/slouch-app/src/person.svg, .github/workflows/pages.yml]
+    paths: [www/**, crates/slouch-app/src/person.svg, crates/slouch-app/src/app-icon.svg, .github/workflows/pages.yml]
   workflow_dispatch:
 
 jobs:

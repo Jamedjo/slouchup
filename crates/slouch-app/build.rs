@@ -11,6 +11,7 @@ mod icon_file;
 
 fn main() {
     println!("cargo:rerun-if-changed=src/art.rs");
+    println!("cargo:rerun-if-changed=src/app-icon.svg");
     println!("cargo:rerun-if-changed=src/icon_file.rs");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;

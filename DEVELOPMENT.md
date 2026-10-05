@@ -11,6 +11,8 @@ A Rust workspace of everything in `crates/`:
 | [`yunet`](crates/yunet) | YuNet face detection with five landmarks, in pure Rust on tract. The model is in `models/`. |
 | [`camera-drift`](crates/camera-drift) | How far the webcam has tilted since a reference frame, from the background around the person |
 | [`posture`](crates/posture) | Posture metrics, slouch decisions, nudge timing and calibration game scoring, with no camera or UI |
+| [`tray-popover`](crates/tray-popover) | Where the tray's popover goes against the monitors' work areas, the panel's edge and its scale, when a click opens or closes it, and what each Linux panel's click positions are in. No windowing library. |
+| [`tray-popover-tao`](crates/tray-popover-tao) | The popover in a tao window: borderless, hidden until shown, closed when it loses the focus. A non-activating panel on macOS, with rounded corners on Windows 11. |
 | [`slouch-app`](crates/slouch-app) | The app itself, built as the `slouchup` binary: the Dioxus windows, tray, notifications, camera, updates and the demo person |
 
 `vendor/tract-core` is a patched tract-core with vectorised kernels that make face detection about
@@ -128,8 +130,12 @@ describe.
   `dev.weareframes.slouchup`. The sender has to be set before the first notification: without it,
   the first one asks AppleScript for an app called "use_default" and hangs for two minutes. A test
   checks the id matches `packaging/macos/Info.plist`.
-- **The Linux tray's hover name** comes from GLib's application name, set with
-  `glib::set_application_name`: appindicator has no tooltip, and panels show its title instead.
+- **The tray** is tray-icon's own, newer than the one dioxus-desktop re-exports, and on Linux it
+  uses ksni, so a left click reaches the app as a StatusNotifierItem `Activate(x, y)`. Panels give
+  that position in device or logical pixels, or not at all; `tray_popover::linux::Host` keeps the
+  table. On X11 the popover opens by the icon; on Wayland the compositor places it, until it
+  moves to layer-shell. Where a panel never sends clicks, starting SlouchUp again opens its
+  window.
 - **The Windows installer's splash** progress bar is coloured with vpk's `--splashProgressColor`;
   the splash image is drawn by `cargo run --example splash`.
 - **Reinstalling on Windows**: uninstalling can leave `Update.exe` in `%LOCALAPPDATA%\slouchup`,

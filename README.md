@@ -21,14 +21,16 @@ once you pass your slouch limit, marked by notches on the frame, they turn over 
 turn dotted when you're out of frame, and grey while you've paused. Its menu shows the current
 status and has:
 
-- **Show camera** — your camera with the baseline and slouch lines, and how close each measure is
-  to its limit.
+- **Show camera** — SlouchUp's window, on your camera with the baseline and slouch lines, and how
+  close each measure is to its limit. Its header switches between the Camera, History and Settings
+  views.
 - **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
   your screens, slouching, and leaning in, then set the limits halfway between.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
-- **History** — how you've sat today, quarter hour by quarter hour, and how much of each of the
-  last seven days you spent slouching.
-- **Settings** — which camera to use, the two slouch limits, and how soon and how often to nudge.
+- **History** — the window's History view: how you've sat today, quarter hour by quarter hour,
+  and how much of each of the last seven days you spent slouching.
+- **Settings** — the window's Settings view: which camera to use, the two slouch limits, and how
+  soon and how often to nudge.
 - **Snooze for 30 minutes** — no nudges for a while, though the tray icon carries on. The nudge
   itself has a Snooze button too.
 - **Pause** and **Quit**.
@@ -38,7 +40,7 @@ and shows the icon to look for in the tray. Turning the camera on starts the cal
 
 <img src="docs/screenshots/welcome.png" alt="The first-run welcome, asking before turning the camera on" width="480">
 
-Closing the camera window leaves SlouchUp running in the tray. The first close of each run says so
+Closing the window leaves SlouchUp running in the tray. The first close of each run says so
 in a small window with Keep running and Quit buttons, and in a notification.
 
 <img src="docs/screenshots/still-running.png" alt="The window and notification saying SlouchUp is still running, each with a way to quit" width="520">
@@ -48,11 +50,11 @@ instead, with Resume in the tray menu to turn it on.
 
 <img src="docs/screenshots/camera-off.png" alt="The notification saying SlouchUp is in the tray with the camera off" width="400">
 
-<img src="docs/screenshots/settings.png" alt="The settings window" width="480">
+<img src="docs/screenshots/settings.png" alt="The Settings view" width="480">
 
 ### History
 
-The history window charts how you've sat: sitting well, slouching and away for each
+The History view charts how you've sat: sitting well, slouching and away for each
 quarter hour of today, then the share of each of the last seven days spent slouching. It keeps
 two weeks, readable only by you, and saves every ten minutes and when you pause or quit. Settings
 can turn it off or clear it. The screenshot is the demo's made-up week.
@@ -74,10 +76,10 @@ Tilting a laptop lid is told apart from slouching by how the background moves.
 ```sh
 cargo build --release
 target/release/slouchup            # tray only
-target/release/slouchup --show     # with the camera window open
+target/release/slouchup --show     # with the window open on the camera
 target/release/slouchup --demo     # with the drawn stand-in instead of a webcam
-target/release/slouchup --settings # with the settings window open
-target/release/slouchup --history  # with the history window open
+target/release/slouchup --settings # with the window open on Settings
+target/release/slouchup --history  # with the window open on History
 ```
 
 The limits are saved in `~/.config/slouchup/thresholds.json`, other settings in
@@ -119,7 +121,7 @@ A Rust workspace, with the parts that could be useful elsewhere in their own cra
 | [`yunet`](crates/yunet) | YuNet face detection with five landmarks, in pure Rust on [tract](https://github.com/sonos/tract) |
 | [`camera-drift`](crates/camera-drift) | How far a webcam has tilted, from the background around a person |
 | [`posture`](crates/posture) | Slouch decisions, nag timing and calibration game scoring, with no camera or UI |
-| [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, camera window and game |
+| [`slouch-app`](crates/slouch-app) | The [Dioxus](https://dioxuslabs.com) app: tray, notifications, window and game |
 
 The camera preview reaches the window through Dioxus's in-process protocol rather than a local
 server, so no other program or web page can read the camera through SlouchUp.

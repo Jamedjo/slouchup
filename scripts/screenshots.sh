@@ -45,15 +45,17 @@ sleep 4.5 && shot slouching
 sleep 11.5 && shot leaning
 kill $!
 
-# The settings window is taller than the main screen, so it goes on the second, taller one.
-"$app" --demo --settings > "$work/settings.log" 2>&1 &
-sleep 4.5 && swaync-client -C > /dev/null && swaymsg -q '[title="slouchup settings"] move to output HEADLESS-2, focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "slouchup settings") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/settings.png"
-kill $!
-
-# The demo comes with a made-up week, so the history window has something to chart.
-"$app" --demo --history > "$work/history.log" 2>&1 &
-sleep 4.5 && swaync-client -C > /dev/null && swaymsg -q '[title="slouchup history"] focus' && sleep 1 && grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "slouchup history") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/history.png"
-kill $!
+# The window opens on its Settings or History view, and goes on the second, taller screen.
+view() {
+    "$app" --demo --"$1" > "$work/$1.log" 2>&1 &
+    sleep 4.5 && swaync-client -C > /dev/null
+    swaymsg -q '[title="^SlouchUp$"] move to output HEADLESS-2, focus' && sleep 1
+    grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "SlouchUp") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/$1.png"
+    kill $!
+}
+view settings
+# The demo comes with a made-up week, so the history view has something to chart.
+view history
 
 # The game's first step: sit up and look at one of the two screens. Whichever screen holds the
 # full-screen prompt is the busier picture; the other is plain background.

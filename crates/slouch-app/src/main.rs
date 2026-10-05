@@ -142,8 +142,13 @@ fn main() {
         views: Arc::new(Mutex::new(Some(view_rx))),
         start_with_game: args.game,
         persist: !args.demo,
-        start_with_settings: args.settings,
-        start_with_history: args.history,
+        start_on: if args.settings {
+            ui::Page::Settings
+        } else if args.history {
+            ui::Page::History
+        } else {
+            ui::Page::Camera
+        },
         history,
         preview,
         onboarding,
@@ -152,8 +157,11 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title(APP_NAME)
-        .with_visible(args.show || onboarding)
-        .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 600.0));
+        .with_visible(args.show || args.settings || args.history || onboarding)
+        // Tall enough for a 4:3 camera's picture to fill the window's width, and short enough
+        // for a 1366x768 laptop's screen.
+        .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 684.0))
+        .with_min_inner_size(dioxus::desktop::LogicalSize::new(560.0, 480.0));
     let desktop = ui::window_config(window, Theme::Night)
         .with_close_behaviour(WindowCloseBehaviour::WindowHides)
         .with_exits_when_last_window_closes(false);

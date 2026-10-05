@@ -1,4 +1,5 @@
-//! The tray, the camera window, and the full-screen "look here" prompt used by the calibration game.
+//! The tray, the app's window with its camera, history and settings views, and the full-screen
+//! "look here" prompt used by the calibration game.
 
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
@@ -22,10 +23,10 @@ use crate::art::{self, Files, Mark, Mood, Theme};
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
-use crate::history_window::{HistoryHandle, HistoryPage, HistoryPageProps};
+use crate::history_window::HistoryPage;
 use crate::notifier;
 use crate::onboarding::Onboarding;
-use crate::settings::{SettingsHandle, SettingsPage, SettingsPageProps};
+use crate::settings::SettingsPage;
 use crate::{screens, still_running, style};
 
 /// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
@@ -51,13 +52,46 @@ pub struct Bridge {
     pub preview: FrameSlot,
     /// Whether settings and calibration are saved; demos leave them alone.
     pub persist: bool,
-    pub start_with_settings: bool,
     /// The first run, which waits for the welcome to turn the camera on.
     pub onboarding: bool,
     pub files: Files,
-    pub start_with_history: bool,
+    /// The view the window opens on.
+    pub start_on: Page,
     pub history: crate::engine::SharedHistory,
 }
+
+/// The window's views, switched between in its header.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Page {
+    Camera,
+    History,
+    Settings,
+}
+
+impl Page {
+    const ALL: [Page; 3] = [Page::Camera, Page::History, Page::Settings];
+
+    fn label(self) -> &'static str {
+        match self {
+            Page::Camera => "Camera",
+            Page::History => "History",
+            Page::Settings => "Settings",
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Page::Camera => CAMERA_ICON,
+            Page::History => HISTORY_ICON,
+            Page::Settings => SETTINGS_ICON,
+        }
+    }
+}
+
+/// Line icons in the design system's stroke, coloured by the text around them.
+const CAMERA_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10.5 5-3v9l-5-3"/></svg>"#;
+const HISTORY_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"><path d="M4 20h16M7 16v-4M12 16V6M17 16V9"/></svg>"#;
+const SETTINGS_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.5"/><circle cx="10" cy="17" r="2.5"/></svg>"#;
 
 impl Bridge {
     pub fn send(&self, command: Command) {
@@ -351,88 +385,26 @@ pub fn App() -> Element {
         }
     });
 
-    let start_game = {
+    let start_game = use_callback({
         let bridge = bridge.clone();
         let mut monitors = monitors;
-        move || {
+        move |()| {
             let found: Vec<MonitorHandle> = window().available_monitors().collect();
             let screens = screens::describe(&found);
             monitors.set(found);
             bridge.send(Command::Game { screens });
         }
-    };
-    let settings_open = use_hook(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
-    let open_settings = {
-        let bridge = bridge.clone();
-        move || {
-            if settings_open.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-            let handle = SettingsHandle {
-                bridge: bridge.clone(),
-                open: settings_open.clone(),
-            };
-            let dom = VirtualDom::new_with_props(
-                SettingsPage,
-                SettingsPageProps {
-                    handle,
-                    initial: view.peek().settings,
-                },
-            );
-            let config = window_config(
-                WindowBuilder::new()
-                    .with_title(format!("{APP_NAME} settings"))
-                    .with_inner_size(dioxus::desktop::LogicalSize::new(480.0, 680.0)),
-                Theme::Day,
-            );
-            let _ = window().new_window(dom, config);
-        }
-    };
-    let history_open = use_hook(|| Arc::new(std::sync::atomic::AtomicBool::new(false)));
-    let open_history = {
-        let bridge = bridge.clone();
-        move || {
-            if history_open.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-            let handle = HistoryHandle {
-                history: bridge.history.clone(),
-                open: history_open.clone(),
-            };
-            let dom = VirtualDom::new_with_props(HistoryPage, HistoryPageProps { handle });
-            let config = window_config(
-                WindowBuilder::new()
-                    .with_title(format!("{APP_NAME} history"))
-                    .with_inner_size(dioxus::desktop::LogicalSize::new(720.0, 640.0)),
-                Theme::Day,
-            );
-            let _ = window().new_window(dom, config);
-        }
-    };
-    use_hook({
-        let open_history = open_history.clone();
-        let wanted = bridge.start_with_history;
-        move || {
-            if wanted {
-                open_history();
-            }
-        }
+    });
+    let mut page = use_signal(|| bridge.start_on);
+    let open_page = use_callback(move |to: Page| {
+        page.set(to);
+        show_main_window();
     });
     use_hook({
-        let open_settings = open_settings.clone();
-        let wanted = bridge.start_with_settings;
-        move || {
-            if wanted {
-                open_settings();
-            }
-        }
-    });
-    use_hook({
-        let mut start_game = start_game.clone();
         let wanted = bridge.start_with_game;
         move || {
             if wanted {
-                start_game();
+                start_game(());
             }
         }
     });
@@ -472,7 +444,6 @@ pub fn App() -> Element {
     let start_watching = {
         let bridge = bridge.clone();
         let tray = tray.clone();
-        let mut start_game = start_game.clone();
         move |camera: Option<String>| {
             if bridge.persist {
                 let mut preferences = config::load_preferences();
@@ -486,7 +457,7 @@ pub fn App() -> Element {
             paused.set(false);
             tray.pause.set_text(pause_label(false));
             onboarding.set(false);
-            start_game();
+            start_game(());
         }
     };
     let not_now = move |()| {
@@ -497,15 +468,12 @@ pub fn App() -> Element {
     let on_menu = use_hook({
         let bridge = bridge.clone();
         let tray = tray.clone();
-        let mut start_game = start_game.clone();
-        let open_settings = open_settings.clone();
-        let open_history = open_history.clone();
         move || {
             std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
-                "show" => show_main_window(),
-                "settings" => open_settings(),
-                "history" => open_history(),
-                "game" => start_game(),
+                "show" => open_page(Page::Camera),
+                "settings" => open_page(Page::Settings),
+                "history" => open_page(Page::History),
+                "game" => start_game(()),
                 "recalibrate" => bridge.send(Command::Recalibrate),
                 "pause" => {
                     let now_paused = !paused();
@@ -614,7 +582,7 @@ pub fn App() -> Element {
         }
     });
 
-    if onboarding() {
+    if onboarding() && page() == Page::Camera {
         let chosen = bridge
             .persist
             .then(|| config::load_preferences().camera)
@@ -623,16 +591,49 @@ pub fn App() -> Element {
             Onboarding { chosen, on_start: start_watching, on_later: not_now }
         };
     }
-    let preview = bridge.preview.clone();
-    let current = view.read().clone();
+    let shown = page();
+    rsx! {
+        div { class: "app", "data-theme": Theme::Night.name(),
+            header { class: "topbar",
+                div { class: "brand", "aria-label": APP_NAME, role: "img",
+                    span { class: "wordmark", "slouch", span { class: "up", "up" } }
+                }
+                nav { class: "views", "aria-label": "Views",
+                    for to in Page::ALL {
+                        button {
+                            class: "view-tab",
+                            "aria-current": if shown == to { "page" } else { "false" },
+                            title: "{to.label()}",
+                            onclick: move |_| page.set(to),
+                            span { class: "icon", dangerous_inner_html: to.icon() }
+                            span { class: "view-label", "{to.label()}" }
+                        }
+                    }
+                }
+            }
+            main { class: "view",
+                match shown {
+                    Page::Camera => rsx! { CameraPage { current: view(), start_game } },
+                    Page::History => rsx! { HistoryPage {} },
+                    Page::Settings => rsx! { SettingsPage { initial: view.peek().settings } },
+                }
+            }
+        }
+    }
+}
+
+/// The live picture with its lines and readings, and the ways to calibrate.
+#[component]
+fn CameraPage(current: View, start_game: Callback<()>) -> Element {
+    let bridge = use_context::<Bridge>();
     let (frame_width, frame_height) = current.frame_size;
     let down = |y: f32| y / frame_height * 100.0;
     rsx! {
-        div { class: "app", "data-theme": Theme::Night.name(),
+        div { class: "camera-page",
             div {
                 class: "stage",
                 style: "--aspect: {frame_width / frame_height}",
-                CameraView { slot: preview }
+                CameraView { slot: bridge.preview.clone() }
                 if let Some((line, limit)) = current.lines {
                     div { class: "line baseline", style: "top: {down(line)}%", span { "baseline" } }
                     div { class: "line limit", style: "top: {down(limit)}%", span { "slouch" } }
@@ -655,10 +656,8 @@ pub fn App() -> Element {
                 }
             }
             div { class: "buttons",
-                button { class: "button primary", onclick: move |_| { let mut start = start_game.clone(); start() }, "Calibration game" }
+                button { class: "button primary", onclick: move |_| start_game(()), "Calibration game" }
                 button { class: "button", onclick: move |_| bridge.send(Command::Recalibrate), "Quick recalibrate" }
-                button { class: "button", onclick: move |_| { let open = open_history.clone(); open() }, "History" }
-                button { class: "button", onclick: move |_| { let open = open_settings.clone(); open() }, "Settings" }
             }
         }
     }

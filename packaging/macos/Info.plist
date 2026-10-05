@@ -21,7 +21,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
 	<key>NSCameraUsageDescription</key>
-	<string>SlouchUp watches your posture through the webcam. Everything happens on your computer.</string>
+	<string>SlouchUp uses the camera to nudge you when your head starts to sink. Everything runs on your computer. Video never leaves it.</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>

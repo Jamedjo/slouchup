@@ -149,7 +149,7 @@ impl std::fmt::Display for Problem {
                 lean * 100.0
             ),
             Problem::Sinking => write!(f, "Your head has sunk lower than usual."),
-            Problem::DroppedOutOfView => write!(f, "Your head dropped out of view."),
+            Problem::DroppedOutOfView => write!(f, "Your head dropped out of frame."),
         }
     }
 }

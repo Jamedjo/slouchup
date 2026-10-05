@@ -60,7 +60,7 @@ pub fn HistoryPage(handle: HistoryHandle) -> Element {
             section {
                 h2 { "Last 7 days" }
                 WeekChart { days: history.days(now, 7) }
-                p { class: "hint", "Share of the time you were at the camera that you spent slouching." }
+                p { class: "hint", "Share of the time you were at your desk that you spent slouching." }
             }
         }
     }

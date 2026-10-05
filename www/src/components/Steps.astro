@@ -1,7 +1,7 @@
 ---
 import Band from "./Band.astro";
-import Eyes from "./Eyes.astro";
 import StepCard from "./StepCard.astro";
+import TrayMark from "./TrayMark.astro";
 import UpTile from "./UpTile.astro";
 ---
 
@@ -18,8 +18,8 @@ import UpTile from "./UpTile.astro";
         </svg>
         Big friendly eyes appear on every screen in turn. Sit up straight and look at them for a few seconds.
       </StepCard>
-      <StepCard ground="white" label="2 · Get on with your day" title="It watches quietly">
-        <Eyes slot="picture" mood="upright" size={58} />
+      <StepCard ground="white" label="2 · Get on with your day" title="It sits in your tray">
+        <TrayMark slot="picture" state="upright" size={58} />
         SlouchUp compares how far your eyes drop and how much bigger your face gets against how you sat
         when you calibrated.
       </StepCard>

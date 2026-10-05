@@ -1,8 +1,8 @@
 //! The app's artwork, drawn as SVG so the tray, windows, notifications and launcher share one source.
 //!
-//! The app icon and the nudge carry the wordmark's "up". The tray carries a pair of eyes on a 24px
-//! grid whose shape says how you're sitting, so it still reads where colour doesn't. Colours are
-//! the design system's, from `tokens.css`.
+//! The app icon is the slouching p, and the nudge carries the wordmark's "up". The tray carries a
+//! pair of eyes on a 24px grid whose shape says how you're sitting, so it still reads where colour
+//! doesn't. Colours are the design system's, from `tokens.css`.
 
 use std::path::{Path, PathBuf};
 
@@ -137,9 +137,9 @@ fn tile_svg(ground: &str, content: &str) -> String {
     )
 }
 
-/// The app icon: the wordmark's "up" in butter on tomato.
+/// The app icon: the slouching p in tomato, framed on a butter tile.
 pub fn app_icon_svg() -> String {
-    tile_svg(TOMATO_FILL, &format!(r#"<path d="{UP}" fill="{BUTTER}"/>"#))
+    include_str!("app-icon.svg").to_string()
 }
 
 #[allow(dead_code)] // Drawn by examples/splash.rs for packaging, not by the app.
@@ -189,7 +189,7 @@ pub fn write_splash(path: &Path, options: &resvg::usvg::Options) -> std::io::Res
         .map_err(std::io::Error::other)
 }
 
-/// The nudge's icon: the app icon's colours swapped, so it stands apart from other notices.
+/// The nudge's icon: the wordmark's "up" in tomato on butter, so it stands apart from other notices.
 fn nudge_icon_svg() -> String {
     tile_svg(BUTTER, &format!(r#"<path d="{UP}" fill="{TOMATO}"/>"#))
 }

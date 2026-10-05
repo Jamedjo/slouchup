@@ -25,7 +25,7 @@ exec waybar -c "$work/waybar.json" -s "$work/waybar.css"
 exec swaync
 exec "$0" --inside "$work"
 EOF
-    # Two screens, so the calibration game has one to point at.
+    # Two screens, so the guided calibration has one to point at.
     WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=2 WLR_LIBINPUT_NO_DEVICES=1 \
         dbus-run-session -- sway -c "$work/config"
     rm -rf "$work"
@@ -57,8 +57,8 @@ view settings
 # The demo comes with a made-up week, so the history view has something to chart.
 view history
 
-# The game's first step: sit up and look at one of the two screens. Whichever screen holds the
-# full-screen prompt is the busier picture; the other is plain background.
+# The guided calibration's first card. Whichever screen holds it is the busier picture; the other
+# is plain background.
 "$app" --demo --game > "$work/game.log" 2>&1 &
 sleep 7 && swaync-client -C > /dev/null
 grim -o HEADLESS-1 "$work/screen-1.png" && grim -o HEADLESS-2 "$work/screen-2.png"

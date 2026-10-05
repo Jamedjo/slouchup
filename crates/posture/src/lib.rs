@@ -6,7 +6,9 @@
 mod game;
 mod tracker;
 
-pub use game::{GameResult, MetricResult, Pose, Sample, Step, game_steps, score_game};
+pub use game::{
+    Arrival, GameResult, MetricResult, Pose, Sample, Step, game_steps, score_game, typical,
+};
 pub use tracker::{Action, Settings, State, Tracker, Update};
 
 use serde::{Deserialize, Serialize};

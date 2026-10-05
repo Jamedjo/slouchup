@@ -159,6 +159,9 @@ pub struct Preferences {
     /// The limits the last calibration game set, which the settings show the chosen limits
     /// against. `None` until a game is played after this was added.
     pub calibrated: Option<Thresholds>,
+    /// Whether a guided calibration has finished, so the next skips teaching each
+    /// step.
+    pub guided_before: bool,
     /// Whether the AppImage has added itself to the app launcher before, so an entry the user
     /// removed isn't added back.
     pub added_to_launcher: bool,
@@ -174,6 +177,7 @@ impl Default for Preferences {
             cooldown: defaults.cooldown,
             keep_history: true,
             calibrated: None,
+            guided_before: false,
             added_to_launcher: false,
         }
     }

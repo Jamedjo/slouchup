@@ -1,5 +1,5 @@
-//! The tray, the app's window with its camera, history and settings views, and the full-screen
-//! "look here" prompt used by the calibration game.
+//! The tray, the app's window with its camera, history and settings views, and opening the guided
+//! calibration's full-screen window.
 
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
@@ -20,6 +20,7 @@ use crate::camera_picker::CameraPicker;
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_ID, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, PAUSES, View};
+use crate::guided::{Answers, Guided, GuidedProps, SharedLookAt};
 use crate::history_window::HistoryPage;
 use crate::notifier;
 use crate::onboarding::Onboarding;
@@ -434,7 +435,8 @@ pub fn App() -> Element {
     });
     let monitors = use_signal(Vec::<MonitorHandle>::new);
     let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));
-    // The game's full-screen window: which screen it's for, and the window once it has opened.
+    // The guided calibration's full-screen window: which screen it's for, and the window once it
+    // has opened.
     let mut look_here_window = use_signal(|| None::<(Option<usize>, Option<DesktopContext>)>);
 
     let receiver = use_hook({
@@ -642,10 +644,11 @@ pub fn App() -> Element {
         }
     });
 
-    // Put each game step full screen, on the screen it wants you to look at.
+    // Put each calibration step full screen, on the screen it wants you to look at.
     use_effect({
         let look_here = look_here.clone();
         let preview = bridge.preview.clone();
+        let commands = bridge.commands.clone();
         move || {
             let target = view.read().look_at.clone();
             let Some(target) = target else {
@@ -674,16 +677,18 @@ pub fn App() -> Element {
                     .or_else(|| main.primary_monitor()),
             };
             let dom = VirtualDom::new_with_props(
-                LookHere,
-                LookHereProps {
+                Guided,
+                GuidedProps {
                     step: look_here.clone(),
                     slot: preview.clone(),
+                    answers: Answers(commands.clone()),
                 },
             );
             let config = window_config(
                 WindowBuilder::new()
-                    .with_title(format!("{APP_NAME}: calibration game"))
+                    .with_title(format!("{APP_NAME}: guided calibration"))
                     .with_decorations(false)
+                    .with_focused(true)
                     .with_always_on_top(true)
                     .with_fullscreen(Some(Fullscreen::Borderless(monitor))),
                 Theme::Night,
@@ -1018,7 +1023,7 @@ fn BannerView(banner: Banner) -> Element {
 
 /// Text with its word "up" lifted above the baseline: the brand's one gesture.
 #[component]
-fn RisingUp(text: String) -> Element {
+pub fn RisingUp(text: String) -> Element {
     match split_at_up(&text) {
         Some((before, after)) => rsx! {
             "{before}"
@@ -1035,49 +1040,6 @@ fn split_at_up(text: &str) -> Option<(&str, &str)> {
     text.match_indices("up")
         .map(|(at, _)| (&text[..at], &text[at + 2..]))
         .find(|(before, after)| alone(before.chars().next_back()) && alone(after.chars().next()))
-}
-
-/// The current game step, shared with the full-screen window, which has its own virtual DOM.
-#[derive(Clone)]
-pub struct SharedLookAt(Arc<Mutex<LookAt>>);
-
-impl PartialEq for SharedLookAt {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-/// Everything on one vertical line, so your gaze runs from the eyes to the words to yourself.
-#[component]
-fn LookHere(step: SharedLookAt, slot: FrameSlot) -> Element {
-    let mut shown = use_signal(LookAt::default);
-    use_future(move || {
-        let step = step.clone();
-        async move {
-            loop {
-                let latest = step.0.lock().unwrap().clone();
-                if *shown.peek() != latest {
-                    shown.set(latest);
-                }
-                futures_timer::Delay::new(Duration::from_millis(100)).await;
-            }
-        }
-    });
-    let step = shown.read().clone();
-    rsx! {
-        div { class: "look-here", "data-theme": Theme::Night.name(),
-            if step.screen.is_some() {
-                div { class: "look-eyes", dangerous_inner_html: art::looking_up_svg() }
-                div { class: "look-title", "Look here" }
-            }
-            div { class: "look-prompt", RisingUp { text: step.prompt } }
-            div { class: "look-detail", "{step.detail}" }
-            div { class: "look-camera", CameraView { slot } }
-            div { class: "progress look-progress",
-                span { style: "width: {step.progress * 100.0}%" }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

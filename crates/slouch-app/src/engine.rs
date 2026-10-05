@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use camera_drift::{CameraDrift, Grey, Rect};
 use crossbeam_channel::Receiver;
 use futures_channel::mpsc::UnboundedSender;
-use posture::{Action, Pose, Posture, Reading, Sample, Settings, State, Step, Thresholds, Tracker};
+use posture::{
+    Action, Arrival, Pose, Posture, Reading, Sample, Settings, State, Step, Thresholds, Tracker,
+};
 use serde::Serialize;
 
 use crate::art::{Files, Mood};
@@ -21,10 +23,11 @@ use crate::source::{Capture, Source};
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
 const BUSY_INTERVAL: Duration = Duration::from_millis(100);
 const CALIBRATION: Duration = Duration::from_secs(3);
-const GAME_SETTLE: Duration = Duration::from_millis(2500);
+/// Long enough to read a step's instructions before it can start measuring.
+const READY_AT_LEAST: Duration = Duration::from_millis(2000);
+/// When a step starts measuring anyway, for someone who moved too little to notice.
+const READY_AT_MOST: Duration = Duration::from_secs(8);
 const GAME_RECORD: Duration = Duration::from_secs(4);
-const RESULTS_SHOWN: Duration = Duration::from_secs(10);
-const RESULTS_CARD: Duration = Duration::from_secs(4);
 const RETRY_CALIBRATION: Duration = Duration::from_secs(5);
 /// No frame for this long means the camera has gone, say unplugged.
 const CAMERA_LOST: Duration = Duration::from_secs(4);
@@ -49,12 +52,24 @@ pub enum Command {
     /// Turn the camera off, for a while or until [`Command::Resume`].
     Pause(Option<Duration>),
     Resume,
+    /// A button or key pressed in the guided calibration's full-screen window.
+    Guided(Answer),
     Change(Change),
     /// Switch camera, by device id or `None` for the first that works.
     UseCamera(Option<String>),
     ClearHistory,
     /// Save what needs saving, then end the app.
     Quit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Answer {
+    /// Next, Start or Done: on to whatever comes next.
+    Next,
+    /// Do it again, or Try again, after the results.
+    Again,
+    /// Esc or Not now: stop, keeping the calibration from before.
+    Cancel,
 }
 
 /// One setting changed in the settings window. Sent singly, so a window opened before a
@@ -105,14 +120,38 @@ impl Default for View {
     }
 }
 
-/// A calibration game step, for the full-screen prompt.
+/// Where the guided calibration is, for its full-screen window.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LookAt {
     /// The screen to look at, or `None` for the screen the camera window is on.
     pub screen: Option<usize>,
+    pub phase: Phase,
+    /// The step, counting from 1, and how many there are.
+    pub step: usize,
+    pub steps: usize,
+    pub pose: Option<Pose>,
     pub prompt: String,
+    /// What the prompt means, said while getting ready.
     pub detail: String,
+    /// How far the Hold has got, from 0 to 1.
     pub progress: f32,
+    pub in_frame: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Phase {
+    /// The first step of each pose, the first time through: its drawing and what to do, until
+    /// Next.
+    #[default]
+    Teach,
+    /// Instructions for a step, until you're in its pose.
+    Ready,
+    /// Measuring, with nothing to read.
+    Hold,
+    /// Calibrated, with the limits that came out of it.
+    Done(Thresholds),
+    /// A step saw too little of you; names that step.
+    Failed(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -192,7 +231,6 @@ pub struct Engine {
     drift_checked: Option<Instant>,
     view: View,
     started: Instant,
-    results_until: Option<Instant>,
     paused: bool,
     /// When a pause for a while ends, by the wall clock, so time asleep counts towards it.
     resume_at: Option<chrono::DateTime<chrono::Local>>,
@@ -200,6 +238,8 @@ pub struct Engine {
     history_saved: Instant,
     /// Off when the user has asked for no history to be kept.
     recording: bool,
+    /// Whether a guided calibration has finished before, so its intro can be skipped.
+    guided_before: bool,
 }
 
 /// The posture history, shared with the history window.
@@ -262,12 +302,12 @@ impl Engine {
             drift_checked: None,
             view: View::default(),
             started: Instant::now(),
-            results_until: None,
             paused: false,
             resume_at: None,
             history,
             history_saved: Instant::now(),
             recording: !persist || preferences.keep_history,
+            guided_before: persist && preferences.guided_before,
         };
         std::thread::Builder::new()
             .name("slouch-engine".into())
@@ -296,13 +336,6 @@ impl Engine {
         self.view.settings = self.settings;
         self.view.calibrated = self.calibrated;
         self.view.paused = self.paused;
-        if self
-            .results_until
-            .is_some_and(|until| Instant::now() > until)
-        {
-            self.results_until = None;
-            self.view.banner = None;
-        }
         let _ = self.events.unbounded_send(self.view.clone());
     }
 
@@ -371,8 +404,8 @@ impl Engine {
             Command::Game { screens } => {
                 if self.paused || !self.camera_ready() {
                     self.notifier.info(
-                        "Calibration game",
-                        &format!("The game needs the camera, so resume {APP_NAME} first."),
+                        "Guided calibration",
+                        &format!("It needs the camera, so resume {APP_NAME} first."),
                     );
                 } else if !self.play_game(&screens) && self.tracker.is_none() {
                     *announce = true;
@@ -392,6 +425,8 @@ impl Engine {
             }
             Command::Resume => self.resume(),
             Command::Change(change) => self.change(change),
+            // Left over from a guided calibration that has already ended.
+            Command::Guided(_) => {}
             Command::ClearHistory => {
                 self.history.lock().unwrap().clear();
                 if self.persist
@@ -471,6 +506,7 @@ impl Engine {
             cooldown: self.settings.cooldown,
             keep_history: self.recording,
             calibrated: Some(self.calibrated),
+            guided_before: self.guided_before,
             ..config::load_preferences()
         };
         if self.persist
@@ -516,15 +552,17 @@ impl Engine {
         }
     }
 
-    /// Collect commands that arrive mid-calibration or mid-game, and say whether one of them
-    /// should cut it short. Game requests during a game are dropped, since one is running;
-    /// during calibration they wait their turn.
-    fn interrupted(&mut self, in_game: bool) -> bool {
+    /// Collect commands that arrive mid-calibration, to wait their turn, and say whether one of
+    /// them should cut it short.
+    fn interrupted(&mut self) -> bool {
         while let Ok(command) = self.commands.try_recv() {
-            if !(in_game && matches!(command, Command::Game { .. })) {
-                self.pending.push_back(command);
-            }
+            self.pending.push_back(command);
         }
+        self.stopping()
+    }
+
+    /// Whether a waiting command, such as Pause, should stop a calibration.
+    fn stopping(&self) -> bool {
         self.pending
             .iter()
             .any(|c| matches!(c, Command::Pause(_) | Command::UseCamera(_) | Command::Quit))
@@ -641,7 +679,7 @@ impl Engine {
         let end = Instant::now() + CALIBRATION;
         while Instant::now() < end {
             std::thread::sleep(BUSY_INTERVAL);
-            if self.interrupted(false) {
+            if self.interrupted() {
                 return false;
             }
             let Some(seen) = self.observe() else { continue };
@@ -673,23 +711,120 @@ impl Engine {
         self.drift = Some(drift);
     }
 
-    /// Walk through upright and slouched poses, then set thresholds between them.
+    /// The guided calibration: each step's Get ready and Hold, taught as it comes the first time,
+    /// then the results, again as often as asked. Says whether it ended calibrated.
     fn play_game(&mut self, screens: &[String]) -> bool {
         let steps = posture::game_steps(screens);
-        self.set_status(Mood::Idle, "Calibration game");
+        self.set_status(Mood::Idle, "Calibrating");
         self.view.lines = None;
         self.view.reading = None;
+        let mut teach = !self.guided_before;
+        let mut calibrated = false;
+        while let Some((records, drift)) = self.play_steps(&steps, teach) {
+            teach = false;
+            let failed = self.finish_game(&steps, records, drift);
+            calibrated |= failed.is_none();
+            self.view.look_at = Some(LookAt {
+                phase: failed.map_or(Phase::Done(self.settings.thresholds), Phase::Failed),
+                ..LookAt::default()
+            });
+            self.publish();
+            if self.wait_for_answer() != Answer::Again {
+                break;
+            }
+        }
+        self.act(None);
+        self.view.look_at = None;
+        self.view.banner = None;
+        self.publish();
+        calibrated
+    }
+
+    /// Teach step `index` until Next: its drawing and what to do, with nothing measured yet.
+    /// Says whether to carry on.
+    fn teach(&mut self, steps: &[Step], index: usize) -> bool {
+        let step = &steps[index];
+        tracing::info!("guided step {}: teach", index + 1);
+        loop {
+            std::thread::sleep(BUSY_INTERVAL);
+            match self.guided_answer() {
+                Some(Answer::Next) => return true,
+                Some(Answer::Cancel) => return false,
+                _ => {}
+            }
+            // Taking frames keeps the camera from counting as lost while this waits.
+            let in_frame = self.observe().map(|seen| seen.face.is_some());
+            self.view.look_at = Some(LookAt {
+                screen: step.screen,
+                phase: Phase::Teach,
+                step: index + 1,
+                steps: steps.len(),
+                pose: Some(step.pose),
+                prompt: step.prompt.clone(),
+                in_frame: in_frame.unwrap_or(false),
+                ..LookAt::default()
+            });
+            self.publish();
+        }
+    }
+
+    /// Wait for a button or key in the full-screen window, or for something that stops it.
+    fn wait_for_answer(&mut self) -> Answer {
+        loop {
+            if let Some(answer) = self.guided_answer() {
+                return answer;
+            }
+            std::thread::sleep(BUSY_INTERVAL);
+        }
+    }
+
+    /// The latest answer from the full-screen window, with anything that should stop the
+    /// calibration, such as pausing, counting as Cancel.
+    fn guided_answer(&mut self) -> Option<Answer> {
+        let mut answer = None;
+        while let Ok(command) = self.commands.try_recv() {
+            match command {
+                Command::Guided(given) => answer = Some(given),
+                Command::Game { .. } => {}
+                other => self.pending.push_back(other),
+            }
+        }
+        if self.stopping() {
+            Some(Answer::Cancel)
+        } else {
+            answer
+        }
+    }
+
+    /// Each step: taught the first time its pose comes up if `teach`, then instructions until
+    /// you're in the pose, then a quiet Hold while it records. `None` if it was stopped.
+    fn play_steps(
+        &mut self,
+        steps: &[Step],
+        teach: bool,
+    ) -> Option<(Vec<GameRecord>, Option<CameraDrift>)> {
         let mut drift: Option<CameraDrift> = None;
         let mut records = Vec::new();
+        let mut upright: Vec<Posture> = Vec::new();
         for (index, step) in steps.iter().enumerate() {
-            let title = format!("{}/{}  {}", index + 1, steps.len(), step.prompt);
+            let first_of_pose = steps[..index].iter().all(|s| s.pose != step.pose);
+            if teach && first_of_pose && !self.teach(steps, index) {
+                return None;
+            }
+            tracing::info!("guided step {}: get ready", index + 1);
             self.act(Some(step.pose));
+            let mut arrival = Arrival::new(
+                step.pose,
+                posture::typical(&upright),
+                self.settings.thresholds,
+            );
             let start = Instant::now();
-            while start.elapsed() < GAME_SETTLE + GAME_RECORD {
+            let mut holding_since: Option<Instant> = None;
+            loop {
                 std::thread::sleep(BUSY_INTERVAL);
-                if self.interrupted(true) {
-                    self.abandon_game();
-                    return false;
+                let answer = self.guided_answer();
+                if answer == Some(Answer::Cancel) {
+                    return None;
                 }
                 let Some(seen) = self.observe() else { continue };
                 if drift.is_none() && seen.face.is_some() {
@@ -698,9 +833,20 @@ impl Engine {
                 let shift = drift
                     .as_mut()
                     .map_or(0.0, |d| d.update(seen.grey(), seen.person()));
-                let elapsed = start.elapsed();
-                let recording = elapsed >= GAME_SETTLE;
-                if recording && let (Some(posture), Some(face)) = (seen.posture(shift), seen.face) {
+                let posture = seen.posture(shift);
+                if holding_since.is_none() {
+                    let waited = start.elapsed();
+                    let arrived = arrival.arrived(posture) && waited >= READY_AT_LEAST;
+                    if arrived || answer == Some(Answer::Next) || waited >= READY_AT_MOST {
+                        tracing::info!("guided step {}: hold", index + 1);
+                        holding_since = Some(Instant::now());
+                    }
+                }
+                let held = holding_since.map(|since| since.elapsed());
+                if let (Some(held), Some(posture), Some(face)) = (held, posture, seen.face) {
+                    if index == 0 {
+                        upright.push(posture);
+                    }
                     records.push(GameRecord {
                         sample: Sample {
                             step: index + 1,
@@ -708,62 +854,65 @@ impl Engine {
                             posture,
                         },
                         screen: step.screen,
-                        t: (elapsed - GAME_SETTLE).as_secs_f32(),
+                        t: held.as_secs_f32(),
                         drift: shift,
                         face: [face.x, face.y, face.width, face.height],
                         points: face.landmarks.points(),
                     });
                 }
-                let (subtitle, progress) = if recording {
-                    (
-                        "Hold it…".to_string(),
-                        (elapsed - GAME_SETTLE).as_secs_f32() / GAME_RECORD.as_secs_f32(),
-                    )
-                } else {
-                    (
-                        format!(
-                            "Get ready {:.0}",
-                            (GAME_SETTLE - elapsed).as_secs_f32().ceil()
-                        ),
-                        0.0,
-                    )
-                };
+                let progress = held.map_or(0.0, |h| {
+                    (h.as_secs_f32() / GAME_RECORD.as_secs_f32()).min(1.0)
+                });
                 self.view.banner = Some(Banner {
-                    title: title.clone(),
-                    lines: vec![subtitle.clone()],
+                    title: step.prompt.clone(),
+                    lines: vec![
+                        if held.is_some() {
+                            "Hold"
+                        } else {
+                            "Get into it now"
+                        }
+                        .into(),
+                    ],
                     progress: Some(progress),
                 });
                 self.view.look_at = Some(LookAt {
                     screen: step.screen,
+                    phase: if held.is_some() {
+                        Phase::Hold
+                    } else {
+                        Phase::Ready
+                    },
+                    step: index + 1,
+                    steps: steps.len(),
+                    pose: Some(step.pose),
                     prompt: step.prompt.clone(),
-                    detail: subtitle.clone(),
+                    detail: step_detail(steps, index).into(),
                     progress,
+                    in_frame: seen.face.is_some(),
                 });
                 self.view.status = if seen.face.is_some() {
-                    "Calibration game"
+                    "Calibrating"
                 } else {
                     OUT_OF_FRAME
                 }
                 .into();
                 self.publish();
+                if held.is_some_and(|h| h >= GAME_RECORD) {
+                    break;
+                }
             }
         }
-        self.finish_game(&steps, records, drift)
+        Some((records, drift))
     }
 
-    fn abandon_game(&mut self) {
-        self.act(None);
-        self.view.look_at = None;
-        self.view.banner = None;
-        self.publish();
-    }
-
+    /// Score the steps and, if they measured you, start tracking with what they found. Returns
+    /// the prompt of the first step that saw too little of you, if one did.
     fn finish_game(
         &mut self,
         steps: &[Step],
         records: Vec<GameRecord>,
         drift: Option<CameraDrift>,
-    ) -> bool {
+    ) -> Option<String> {
         self.act(None);
         let samples: Vec<Sample> = records.iter().map(|r| r.sample).collect();
         let result = posture::score_game(steps, &samples);
@@ -780,18 +929,12 @@ impl Engine {
                 Err(error) => tracing::warn!("couldn't save game: {error}"),
             }
         }
-
         let (Some(result), Some(drift)) = (result, drift) else {
-            self.view.look_at = None;
-            self.set_status(Mood::Idle, "You were out of frame for part of the game");
-            self.view.banner = Some(Banner {
-                title: "Try again".into(),
-                lines: vec!["You were out of frame for part of the game.".into()],
-                progress: None,
-            });
-            self.results_until = Some(Instant::now() + RESULTS_SHOWN);
-            self.publish();
-            return false;
+            self.set_status(
+                Mood::Idle,
+                "You were out of frame for part of the calibration",
+            );
+            return Some(least_seen(steps, &samples));
         };
         let calibrated = result.thresholds(self.calibrated);
         self.settings.thresholds = self
@@ -800,39 +943,35 @@ impl Engine {
             .recalibrated(self.calibrated, calibrated);
         self.calibrated = calibrated;
         self.save_thresholds(self.settings.thresholds);
-        self.save_preferences();
         self.start_tracking(result.baseline, drift);
-        let line = |name: &str, m: &posture::MetricResult| {
-            let new = m
-                .threshold
-                .map_or("unchanged".to_string(), |t| format!("limit {t:.2}"));
-            format!(
-                "{name}: upright ≤{:+.2}  slump {:+.2}  lean {:+.2}  {new}",
-                m.upright_max, m.slump, m.lean
-            )
-        };
-        let limits = self.settings.thresholds;
-        self.view.look_at = Some(LookAt {
-            screen: None,
-            prompt: "Calibrated".into(),
-            detail: format!(
-                "You'll get a nudge when your eyes drop {:.2} face heights or you're {:.0}% closer to the screen.",
-                limits.drop,
-                limits.lean * 100.0
-            ),
-            progress: 1.0,
-        });
-        self.publish();
-        std::thread::sleep(RESULTS_CARD);
-        self.view.look_at = None;
-        self.view.banner = Some(Banner {
-            title: "Results".into(),
-            lines: vec![line("drop", &result.drop), line("lean", &result.lean)],
-            progress: None,
-        });
-        self.results_until = Some(Instant::now() + RESULTS_SHOWN);
-        true
+        self.guided_before = true;
+        self.save_preferences();
+        None
     }
+}
+
+/// What a step's prompt means, in a sentence under it.
+fn step_detail(steps: &[Step], index: usize) -> &'static str {
+    let after_slouching = index > 0 && steps[index - 1].pose != Pose::Upright;
+    match steps[index].pose {
+        Pose::Upright if after_slouching => "Back to sitting tall.",
+        Pose::Upright => "Sit tall and comfortable, facing this screen.",
+        Pose::Slump => "Sink into your chair. Keep your head the same distance from the screen.",
+        Pose::Lean => {
+            "Lean in towards the screen, the way you do when something's too small to read."
+        }
+    }
+}
+
+/// The prompt of the step with the fewest frames of a face.
+fn least_seen(steps: &[Step], samples: &[Sample]) -> String {
+    let seen = |n: usize| samples.iter().filter(|s| s.step == n).count();
+    steps
+        .iter()
+        .enumerate()
+        .min_by_key(|(i, _)| seen(i + 1))
+        .map(|(_, step)| step.prompt.clone())
+        .unwrap_or_default()
 }
 
 fn median(mut values: Vec<f32>) -> f32 {

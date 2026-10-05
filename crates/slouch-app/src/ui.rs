@@ -329,20 +329,6 @@ fn panel_theme() -> Theme {
 /// How often to check whether the panel has changed theme, say for night mode.
 const PANEL_CHECK: Duration = Duration::from_secs(2);
 
-/// The window's keyboard shortcut: C opens the Calibrate choice. Sent on as a name, and left
-/// alone while typing or with a modifier, so it doesn't take over other keys.
-const SHORTCUTS: &str = r#"
-document.addEventListener("keydown", (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
-    if (event.target.closest("input, select, textarea")) return;
-    if (event.key.toLowerCase() === "c") {
-        event.preventDefault();
-        dioxus.send("calibrate");
-    }
-});
-await new Promise(() => {});
-"#;
-
 /// Move focus between the elements matching `selector` for an arrow, Home or End `key`, as a
 /// list does, and say whether it was one of those.
 fn move_focus(selector: &str, key: &Key) -> bool {
@@ -427,16 +413,6 @@ pub fn App() -> Element {
         }
     });
     let mut page = use_signal(|| bridge.start_on);
-    let mut calibrate_open = use_signal(|| false);
-    use_future(move || async move {
-        let mut keys = document::eval(SHORTCUTS);
-        while let Ok(key) = keys.recv::<String>().await {
-            if key == "calibrate" && !paused() {
-                page.set(Page::Camera);
-                calibrate_open.set(true);
-            }
-        }
-    });
     let open_page = use_callback(move |to: Page| {
         page.set(to);
         show_main_window();
@@ -654,7 +630,7 @@ pub fn App() -> Element {
             }
             main { class: "view",
                 match shown {
-                    Page::Camera => rsx! { CameraPage { current: view(), paused: paused(), start_game, calibrate_open } },
+                    Page::Camera => rsx! { CameraPage { current: view(), paused: paused(), start_game } },
                     Page::History => rsx! { HistoryPage {} },
                     Page::Settings => rsx! { SettingsPage { initial: view.peek().settings } },
                 }
@@ -666,13 +642,9 @@ pub fn App() -> Element {
 /// The live picture with its lines and readings, and a bar under it, as video calls have, with
 /// Calibrate.
 #[component]
-fn CameraPage(
-    current: View,
-    paused: bool,
-    start_game: Callback<()>,
-    calibrate_open: Signal<bool>,
-) -> Element {
+fn CameraPage(current: View, paused: bool, start_game: Callback<()>) -> Element {
     let bridge = use_context::<Bridge>();
+    let calibrate_open = use_signal(|| false);
     let (frame_width, frame_height) = current.frame_size;
     let down = |y: f32| y / frame_height * 100.0;
     rsx! {
@@ -743,7 +715,7 @@ fn CalibrateMenu(open: Signal<bool>, on_quick: Callback<()>, on_guided: Callback
         div { class: "calibrate",
             button {
                 class: "control primary calibrate-button",
-                title: "Calibrate (C)",
+                title: "Calibrate",
                 "aria-haspopup": "menu",
                 "aria-expanded": "{open()}",
                 onmounted: move |event| button.set(Some(event.data())),

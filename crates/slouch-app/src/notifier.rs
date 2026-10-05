@@ -1,9 +1,9 @@
 //! Desktop notifications, branded as this app rather than a generic sender.
 //!
-//! The nudge has "I'm up" and "Snooze" buttons, but only "Snooze" on macOS, which shows one action
-//! button beside its own Close. Freedesktop servers can also update a notification already on
-//! screen. macOS and Windows fire and forget, so there the nudge isn't withdrawn when you sit up;
-//! snoozing is in the tray menu everywhere.
+//! The nudge has "I'm up" and "Pause 30 min" buttons, but only "Pause 30 min" on macOS, which shows
+//! one action button beside its own Close. Freedesktop servers can also update a notification
+//! already on screen. macOS and Windows fire and forget, so there the nudge isn't withdrawn when you
+//! sit up; pausing is in the tray menu everywhere.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -22,10 +22,10 @@ const BUNDLE_ID: &str = "dev.weareframes.slouchup";
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
 
-/// Called, from another thread, when the nudge's Snooze button is pressed.
-pub type OnSnooze = Arc<dyn Fn() + Send + Sync>;
+/// Called, from another thread, when the nudge's Pause button is pressed.
+pub type OnPause = Arc<dyn Fn() + Send + Sync>;
 
-const SNOOZE: &str = "snooze";
+const PAUSE: &str = "pause";
 const QUIT: &str = "quit";
 
 /// "I'm up" needs nothing doing: the notification closes and the tracker sees you sit up. macOS
@@ -34,7 +34,7 @@ fn with_buttons(notification: &mut Notification) -> &mut Notification {
     if !cfg!(target_os = "macos") {
         notification.action("up", "I'm up");
     }
-    notification.action(SNOOZE, "Snooze")
+    notification.action(PAUSE, "Pause 30 min")
 }
 
 pub struct Notifier {
@@ -45,18 +45,18 @@ pub struct Notifier {
     /// Whether a nudge's buttons are still waiting for an answer.
     #[cfg(not(all(unix, not(target_os = "macos"))))]
     awaiting_answer: Arc<AtomicBool>,
-    on_snooze: OnSnooze,
+    on_pause: OnPause,
 }
 
 impl Notifier {
-    pub fn new(files: Files, on_snooze: OnSnooze) -> Self {
+    pub fn new(files: Files, on_pause: OnPause) -> Self {
         Self {
             files,
             #[cfg(all(unix, not(target_os = "macos")))]
             nudge: None,
             #[cfg(not(all(unix, not(target_os = "macos"))))]
             awaiting_answer: Arc::default(),
-            on_snooze,
+            on_pause,
         }
     }
 
@@ -74,7 +74,7 @@ impl Notifier {
         }
         let mut notification = base(&self.files, &self.files.nudge_icon, NUDGE, &body, 15000);
         match with_buttons(&mut notification).show() {
-            Ok(handle) => self.nudge = Some(xdg::Nudge::listen(handle, self.on_snooze.clone())),
+            Ok(handle) => self.nudge = Some(xdg::Nudge::listen(handle, self.on_pause.clone())),
             Err(error) => tracing::warn!("notification failed: {error}"),
         }
     }
@@ -97,11 +97,11 @@ impl Notifier {
         match with_buttons(&mut notification).show() {
             Ok(handle) => {
                 let awaiting_answer = self.awaiting_answer.clone();
-                let on_snooze = self.on_snooze.clone();
+                let on_pause = self.on_pause.clone();
                 std::thread::spawn(move || {
                     let _ = handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
-                        if matches!(response, notify_rust::NotificationResponse::Action(key) if key == SNOOZE) {
-                            on_snooze();
+                        if matches!(response, notify_rust::NotificationResponse::Action(key) if key == PAUSE) {
+                            on_pause();
                         }
                     });
                     awaiting_answer.store(false, Ordering::Release);
@@ -219,7 +219,7 @@ mod xdg {
 
     use notify_rust::{ActionResponse, NotificationHandle};
 
-    use super::{OnSnooze, SNOOZE};
+    use super::{OnPause, PAUSE};
 
     pub struct Nudge {
         handle: NotificationHandle,
@@ -229,13 +229,13 @@ mod xdg {
 
     impl Nudge {
         /// Listen for a button press or the notification closing.
-        pub fn listen(handle: NotificationHandle, on_snooze: OnSnooze) -> Self {
+        pub fn listen(handle: NotificationHandle, on_pause: OnPause) -> Self {
             let open = Arc::new(AtomicBool::new(true));
             let (id, closed) = (handle.id(), open.clone());
             std::thread::spawn(move || {
                 let _ = notify_rust::handle_action(id, |response| {
-                    if matches!(response, ActionResponse::Custom(SNOOZE)) {
-                        on_snooze();
+                    if matches!(response, ActionResponse::Custom(PAUSE)) {
+                        on_pause();
                     }
                 });
                 closed.store(false, Ordering::Relaxed);

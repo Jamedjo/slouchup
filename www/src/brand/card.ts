@@ -60,7 +60,7 @@ function nudge(): Node {
       node("div", { display: "flex", flexDirection: "column", gap: 10 }, [
         node("div", { display: "flex", alignItems: "baseline", gap: 9, paddingTop: 8, ...display(34) }, ["Psst, sit", up(TOMATO_SOFT, 34)]),
         node("div", { fontFamily: "Figtree", fontSize: 22, lineHeight: 1.45, color: SAND }, "Your head has sunk lower than usual."),
-        node("div", { display: "flex", gap: 12, marginTop: 6 }, [button("I'm up", true), button("Snooze", false)]),
+        node("div", { display: "flex", gap: 12, marginTop: 6 }, [button("I'm up", true), button("Pause 30 min", false)]),
       ]),
     ],
   );

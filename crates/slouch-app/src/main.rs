@@ -85,7 +85,7 @@ fn main() {
     // The first run keeps the camera off until its welcome says to turn it on.
     let onboarding = !args.demo && !config::has_thresholds();
     if onboarding {
-        let _ = command_tx.send(Command::Pause(true));
+        let _ = command_tx.send(Command::Pause(None));
     }
     let (view_tx, view_rx) = futures_channel::mpsc::unbounded();
     let preview = FrameSlot::default();
@@ -120,7 +120,7 @@ fn main() {
             preferences.settings(config::load_thresholds()),
         )
     };
-    let snooze = command_tx.clone();
+    let pause = command_tx.clone();
     let history = Arc::new(Mutex::new(if args.demo {
         demo::sample_history(chrono::Local::now())
     } else {
@@ -129,8 +129,8 @@ fn main() {
     let links = Links {
         preview: preview.clone(),
         files: files.clone(),
-        on_snooze: Arc::new(move || {
-            let _ = snooze.send(Command::Snooze(true));
+        on_pause: Arc::new(move || {
+            let _ = pause.send(Command::Pause(Some(engine::NUDGE_PAUSE)));
         }),
         history: history.clone(),
         events: view_tx,

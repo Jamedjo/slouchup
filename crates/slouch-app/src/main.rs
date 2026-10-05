@@ -2,6 +2,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod art;
+mod camera_picker;
 mod camera_view;
 mod config;
 mod demo;

@@ -15,6 +15,10 @@ use notify_rust::{Notification, Timeout};
 use crate::art::Files;
 use crate::config::APP_NAME;
 
+/// The installed app's `CFBundleIdentifier`, from `packaging/macos/Info.plist`.
+#[cfg(target_os = "macos")]
+const BUNDLE_ID: &str = "dev.weareframes.slouchup";
+
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
 
@@ -130,6 +134,8 @@ fn base(files: &Files, icon: &Path, summary: &str, body: &str, timeout_ms: u32) 
     notification.hint(notify_rust::Hint::DesktopEntry(
         crate::config::APP_ID.into(),
     ));
+    #[cfg(target_os = "macos")]
+    send_as_this_app();
     #[cfg(windows)]
     if let Some(sender) = crate::windows_shell::toast_sender(&files.icon) {
         notification.app_id(sender);
@@ -176,7 +182,30 @@ fn in_tray(files: &Files, summary: &str, body: &str) {
     }
 }
 
+/// Without a sender, the first notification asks AppleScript for an app called "use_default",
+/// which hangs until the Apple event times out two minutes later.
+#[cfg(target_os = "macos")]
+fn send_as_this_app() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        if let Err(error) = notify_rust::set_application(BUNDLE_ID) {
+            tracing::debug!("notifications not sent as {BUNDLE_ID}: {error}");
+        }
+    });
+}
+
+/// macOS waits for each notification to be delivered, so it sends from its own thread there.
 fn show(notification: &Notification) {
+    #[cfg(target_os = "macos")]
+    {
+        let notification = notification.clone();
+        std::thread::spawn(move || send(&notification));
+    }
+    #[cfg(not(target_os = "macos"))]
+    send(notification);
+}
+
+fn send(notification: &Notification) {
     if let Err(error) = notification.show() {
         tracing::warn!("notification failed: {error}");
     }
@@ -244,5 +273,14 @@ fn escape(text: &str) -> String {
             .replace('>', "&gt;")
     } else {
         text.to_string()
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    #[test]
+    fn bundle_id_matches_the_info_plist() {
+        let plist = include_str!("../../../packaging/macos/Info.plist");
+        assert!(plist.contains(&format!("<string>{}</string>", super::BUNDLE_ID)));
     }
 }

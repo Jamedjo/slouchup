@@ -15,13 +15,16 @@ pub enum Sitting {
     Away,
 }
 
-/// Checks of each kind, and nudges sent, over some stretch of time.
+/// Checks of each kind, and nudges sent or missed, over some stretch of time.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tally {
     pub well: u32,
     pub slouching: u32,
     pub away: u32,
     pub nudges: u32,
+    /// Nudges that were due but couldn't show, or were held for Do Not Disturb.
+    #[serde(default)]
+    pub missed: u32,
 }
 
 impl Tally {
@@ -47,6 +50,7 @@ impl Tally {
         self.slouching += other.slouching;
         self.away += other.away;
         self.nudges += other.nudges;
+        self.missed += other.missed;
     }
 }
 
@@ -83,6 +87,10 @@ impl History {
 
     pub fn nudged(&mut self, at: DateTime<Local>) {
         self.minutes.entry(minute(at)).or_default().nudges += 1;
+    }
+
+    pub fn missed(&mut self, at: DateTime<Local>) {
+        self.minutes.entry(minute(at)).or_default().missed += 1;
     }
 
     pub fn clear(&mut self) {
@@ -174,7 +182,8 @@ mod tests {
                 well: 1,
                 slouching: 1,
                 away: 0,
-                nudges: 1
+                nudges: 1,
+                missed: 0,
             }
         );
         assert_eq!(nine.slouching_share(), 0.5);

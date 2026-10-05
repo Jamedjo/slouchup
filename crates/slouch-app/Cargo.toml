@@ -29,6 +29,7 @@ resvg = { version = "0.45", default-features = false }
 winresource = "0.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gio = "0.18"
 glib = "0.18"
 
 # macOS posts through UserNotifications instead, which drops legacy notifications once an app
@@ -39,8 +40,8 @@ notify-rust = "4.18"
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSSet", "NSString"] }
-objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSProcessInfo", "NSSet", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 
 # The release workflow installs vpk, which builds the Windows installer and the AppImage, at the
 # version locked for this.
@@ -48,6 +49,7 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 velopack = "1.2.161"
 
 [target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["UI_Notifications", "Win32_UI_Shell"] }
 windows-registry = "0.6"
 
 [dev-dependencies]

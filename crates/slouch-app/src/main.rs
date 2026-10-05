@@ -17,6 +17,7 @@ mod installed;
 mod launcher;
 #[cfg(target_os = "macos")]
 mod mac_notify;
+mod notification_access;
 mod notifier;
 mod onboarding;
 mod screens;
@@ -68,6 +69,9 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_secs(1));
         return;
     }
+    // Windows says whether an app's toasts are turned off only once it's a toast sender.
+    #[cfg(windows)]
+    windows_shell::toast_sender(&files.icon);
     // The demo runs alongside the real app, so screenshots don't mean quitting it.
     let _lock = if args.demo {
         None

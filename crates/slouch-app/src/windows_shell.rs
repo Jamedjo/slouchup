@@ -48,3 +48,43 @@ pub fn taskbar_is_light() -> bool {
         .and_then(|key| key.get_u32("SystemUsesLightTheme"))
         .is_ok_and(|light| light != 0)
 }
+
+/// Whether SlouchUp's toasts show, or `None` if Windows won't say, as before it's a toast sender.
+pub fn toast_access() -> Option<crate::notification_access::Access> {
+    use windows::UI::Notifications::{NotificationSetting, ToastNotificationManager};
+    let notifier = ToastNotificationManager::CreateToastNotifierWithId(
+        &windows::core::HSTRING::from(TOAST_SENDER),
+    )
+    .ok()?;
+    use crate::notification_access::Access;
+    Some(match notifier.Setting().ok()? {
+        NotificationSetting::Enabled if presenting() => Access::Presenting,
+        NotificationSetting::Enabled => Access::On { fleeting: false },
+        NotificationSetting::DisabledForUser => Access::OffForAll,
+        NotificationSetting::DisabledByGroupPolicy => Access::Policy,
+        _ => Access::Off,
+    })
+}
+
+/// Whether Windows is keeping quiet for a presentation or a full-screen app.
+fn presenting() -> bool {
+    use windows::Win32::UI::Shell::{
+        QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+        SHQueryUserNotificationState,
+    };
+    unsafe { SHQueryUserNotificationState() }.is_ok_and(|state| {
+        [
+            QUNS_BUSY,
+            QUNS_PRESENTATION_MODE,
+            QUNS_RUNNING_D3D_FULL_SCREEN,
+        ]
+        .contains(&state)
+    })
+}
+
+/// Open a page of Settings, by its `ms-settings:` address.
+pub fn open_settings(page: &str) {
+    if let Err(error) = std::process::Command::new("explorer").arg(page).spawn() {
+        tracing::warn!("couldn't open {page}: {error}");
+    }
+}

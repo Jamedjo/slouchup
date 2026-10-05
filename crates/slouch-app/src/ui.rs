@@ -23,7 +23,7 @@ use crate::art::{self, Files, Mark, Mood, Theme};
 use crate::camera_picker::CameraPicker;
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_NAME};
-use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
+use crate::engine::{Banner, Command, LookAt, PAUSES, View};
 use crate::history_window::HistoryPage;
 use crate::notifier;
 use crate::onboarding::Onboarding;
@@ -105,9 +105,11 @@ impl Bridge {
 
 struct Tray {
     icon: TrayIcon,
+    menu: Menu,
     status: MenuItem,
-    pause: MenuItem,
-    snooze: MenuItem,
+    /// One item for each of [`PAUSES`], swapped for `resume` while paused.
+    pauses: Vec<MenuItem>,
+    resume: MenuItem,
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
     shown: RefCell<Shown>,
     slide: RefCell<Slide>,
@@ -119,7 +121,7 @@ struct Shown {
     mark: Mark,
     theme: Theme,
     status: String,
-    snoozed: bool,
+    paused: bool,
 }
 
 /// The tray's letters easing towards where the latest reading puts them.
@@ -218,17 +220,19 @@ fn tray_icon(mark: Mark, theme: Theme) -> Icon {
         .expect("icon is 64x64")
 }
 
-fn pause_label(paused: bool) -> &'static str {
-    if paused { "Resume" } else { "Pause" }
+/// The tray menu id for each of [`PAUSES`], by its place in the list.
+fn pause_id(index: usize) -> String {
+    format!("pause-{index}")
 }
 
-fn snooze_label(snoozed: bool) -> String {
-    if snoozed {
-        "Stop snoozing".into()
-    } else {
-        format!("Snooze for {} minutes", SNOOZE.as_secs() / 60)
-    }
+/// The length of pause a tray menu id stands for.
+fn pause_for(id: &str) -> Option<Option<Duration>> {
+    let index: usize = id.strip_prefix("pause-")?.parse().ok()?;
+    PAUSES.get(index).map(|&(_, length)| length)
 }
+
+/// Where the pause items start in the tray menu, after the status and a separator.
+const PAUSES_AT: usize = 2;
 
 impl Tray {
     fn new(theme: Theme, paused: bool) -> Self {
@@ -236,27 +240,37 @@ impl Tray {
             mark: if paused { Mark::Paused } else { Mark::Lost },
             theme,
             status: "Starting…".into(),
-            snoozed: false,
+            paused,
         };
         let status = MenuItem::with_id("status", &shown.status, false, None);
-        let pause = MenuItem::with_id("pause", pause_label(paused), true, None);
-        let snooze = MenuItem::with_id("snooze", snooze_label(false), true, None);
+        let pauses: Vec<MenuItem> = PAUSES
+            .iter()
+            .enumerate()
+            .map(|(index, (label, _))| MenuItem::with_id(pause_id(index), label, true, None))
+            .collect();
+        let resume = MenuItem::with_id("resume", "Resume", true, None);
         let menu = Menu::new();
+        menu.append_items(&[&status, &PredefinedMenuItem::separator()])
+            .expect("tray menu builds");
+        if paused {
+            menu.append(&resume).expect("tray menu builds");
+        } else {
+            for pause in &pauses {
+                menu.append(pause).expect("tray menu builds");
+            }
+        }
         menu.append_items(&[
-            &status,
             &PredefinedMenuItem::separator(),
             &MenuItem::with_id("show", "Show camera", true, None),
             &MenuItem::with_id("game", "Calibration game", true, None),
             &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
             &MenuItem::with_id("history", "History…", true, None),
             &MenuItem::with_id("settings", "Settings…", true, None),
-            &snooze,
-            &pause,
             &MenuItem::with_id("quit", "Quit", true, None),
         ])
         .expect("tray menu builds");
         let icon = dioxus::desktop::trayicon::init_tray_icon(
-            menu,
+            menu.clone(),
             Some(tray_icon(shown.mark, shown.theme)),
         );
         let _ = icon.set_tooltip(Some(APP_NAME));
@@ -265,9 +279,10 @@ impl Tray {
         glib::set_application_name(APP_NAME);
         Self {
             icon,
+            menu,
             status,
-            pause,
-            snooze,
+            pauses,
+            resume,
             slide: Slide::settled_at(shown.mark).into(),
             shown: shown.into(),
             sliding: false.into(),
@@ -288,11 +303,30 @@ impl Tray {
             self.status.set_text(&view.status);
             shown.status = view.status.clone();
         }
-        if shown.snoozed != view.snoozed {
-            self.snooze.set_text(snooze_label(view.snoozed));
-            shown.snoozed = view.snoozed;
+        if shown.paused != view.paused {
+            shown.paused = view.paused;
+            self.offer_pauses(!view.paused);
         }
         sliding
+    }
+
+    /// Offer the ways to pause, or while paused, Resume in their place.
+    fn offer_pauses(&self, offer: bool) {
+        let result = if offer {
+            self.menu.remove(&self.resume).and_then(|()| {
+                let pauses: Vec<&dyn dioxus::desktop::trayicon::menu::IsMenuItem> =
+                    self.pauses.iter().map(|p| p as _).collect();
+                self.menu.insert_items(&pauses, PAUSES_AT)
+            })
+        } else {
+            self.pauses
+                .iter()
+                .try_for_each(|pause| self.menu.remove(pause))
+                .and_then(|()| self.menu.insert(&self.resume, PAUSES_AT))
+        };
+        if let Err(error) = result {
+            tracing::warn!("couldn't update the tray menu: {error}");
+        }
     }
 
     /// Draw the letters where the slide has them now, and say whether they're still moving.
@@ -372,7 +406,10 @@ fn show_main_window() {
 #[component]
 pub fn App() -> Element {
     let bridge = use_context::<Bridge>();
-    let mut view = use_signal(View::default);
+    let mut view = use_signal(|| View {
+        paused: bridge.onboarding,
+        ..View::default()
+    });
     let tray = use_hook(|| std::rc::Rc::new(Tray::new(panel_theme(), bridge.onboarding)));
     use_future({
         let tray = tray.clone();
@@ -386,7 +423,7 @@ pub fn App() -> Element {
             }
         }
     });
-    let mut paused = use_signal(|| bridge.onboarding);
+    let paused = use_memo(move || view.read().paused);
     let mut onboarding = use_signal(|| bridge.onboarding);
     let mut cameras = use_signal(Vec::<CameraInfo>::new);
     let list_cameras = use_callback({
@@ -504,23 +541,20 @@ pub fn App() -> Element {
             }
         }
     });
-    let toggle_pause = use_callback({
+    let pause = use_callback({
         let bridge = bridge.clone();
-        let tray = tray.clone();
+        move |length: Option<Duration>| bridge.send(Command::Pause(length))
+    });
+    let resume = use_callback({
+        let bridge = bridge.clone();
         move |()| {
-            let now_paused = !paused();
-            paused.set(now_paused);
-            tray.pause.set_text(pause_label(now_paused));
-            bridge.send(Command::Pause(now_paused));
+            bridge.send(Command::Resume);
             // Resuming turns the camera on, which is all the welcome was waiting for.
-            if !now_paused {
-                onboarding.set(false);
-            }
+            onboarding.set(false);
         }
     });
     let start_watching = {
         let bridge = bridge.clone();
-        let tray = tray.clone();
         move |camera: Option<String>| {
             if bridge.persist {
                 let mut preferences = config::load_preferences();
@@ -531,9 +565,7 @@ pub fn App() -> Element {
             }
             chosen.set(camera.clone());
             bridge.send(Command::UseCamera(camera));
-            bridge.send(Command::Pause(false));
-            paused.set(false);
-            tray.pause.set_text(pause_label(false));
+            bridge.send(Command::Resume);
             onboarding.set(false);
             start_game(());
         }
@@ -562,10 +594,13 @@ pub fn App() -> Element {
                 "history" => open_page(Page::History),
                 "game" => start_game(()),
                 "recalibrate" => bridge.send(Command::Recalibrate),
-                "pause" => toggle_pause(()),
-                "snooze" => bridge.send(Command::Snooze(!view.peek().snoozed)),
+                "resume" => resume(()),
                 "quit" => crate::quit(),
-                _ => {}
+                id => {
+                    if let Some(length) = pause_for(id) {
+                        pause(length);
+                    }
+                }
             }))
         }
     });
@@ -708,7 +743,8 @@ pub fn App() -> Element {
                             cameras: cameras(),
                             active_camera: active_camera.clone().unwrap_or_default(),
                             choose_camera,
-                            toggle_pause,
+                            pause,
+                            resume,
                             start_game,
                             calibrate_open,
                         }
@@ -736,11 +772,13 @@ fn CameraPage(
     cameras: Vec<CameraInfo>,
     active_camera: String,
     choose_camera: Callback<String>,
-    toggle_pause: Callback<()>,
+    pause: Callback<Option<Duration>>,
+    resume: Callback<()>,
     start_game: Callback<()>,
     calibrate_open: Signal<bool>,
 ) -> Element {
     let bridge = use_context::<Bridge>();
+    let pause_open = use_signal(|| false);
     let (frame_width, frame_height) = current.frame_size;
     let down = |y: f32| y / frame_height * 100.0;
     rsx! {
@@ -765,32 +803,50 @@ fn CameraPage(
                 if paused {
                     div { class: "paused-cover",
                         p { "{APP_NAME} is paused, and your camera is off." }
-                        button { class: "button primary", onclick: move |_| toggle_pause(()), "Resume" }
+                        button { class: "button primary", onclick: move |_| resume(()), "Resume" }
                     }
                 }
                 div { class: "status mood-{current.mood:?}",
                     PostureMark { mood: current.mood }
                     span { class: "status-text", "{current.status}" }
-                    if current.snoozed {
-                        span { class: "snoozed", "Nudges snoozed" }
-                    }
                     div { class: "controls",
                         if cameras.len() > 1 {
                             CameraPicker { cameras, active: active_camera, on_choose: choose_camera }
                         }
-                        button {
-                            class: "control pause-button",
-                            "aria-pressed": "{paused}",
-                            title: if paused { "Turn the camera back on" } else { "Turn the camera off" },
-                            onclick: move |_| toggle_pause(()),
-                            span { class: "icon", dangerous_inner_html: if paused { RESUME_ICON } else { PAUSE_ICON } }
-                            "{pause_label(paused)}"
-                        }
-                        if !paused {
-                            CalibrateMenu {
+                        if paused {
+                            button {
+                                class: "control pause-button",
+                                "aria-pressed": "true",
+                                title: "Turn the camera back on",
+                                onclick: move |_| resume(()),
+                                span { class: "icon", dangerous_inner_html: RESUME_ICON }
+                                "Resume"
+                            }
+                        } else {
+                            ChoiceMenu {
+                                name: "pause",
+                                label: "Pause",
+                                icon: PAUSE_ICON,
+                                open: pause_open,
+                                choices: pause_choices(pause),
+                            }
+                            ChoiceMenu {
+                                name: "calibrate",
+                                label: "Calibrate",
+                                primary: true,
                                 open: calibrate_open,
-                                on_quick: move |()| bridge.send(Command::Recalibrate),
-                                on_guided: start_game,
+                                choices: vec![
+                                    Choice {
+                                        name: "Quick".into(),
+                                        detail: "Sit nicely for 3 seconds. Handy after you move your laptop or chair.".into(),
+                                        choose: Callback::new(move |()| bridge.send(Command::Recalibrate)),
+                                    },
+                                    Choice {
+                                        name: "Guided, full screen".into(),
+                                        detail: "Step by step, about 30 seconds. Best the first time, or at a new desk.".into(),
+                                        choose: start_game,
+                                    },
+                                ],
                             }
                         }
                     }
@@ -800,9 +856,46 @@ fn CameraPage(
     }
 }
 
-/// One Calibrate button, opening the choice between a quick one and the guided, full-screen one.
+/// The ways to pause, each saying when the camera comes back on.
+fn pause_choices(pause: Callback<Option<Duration>>) -> Vec<Choice> {
+    PAUSES
+        .iter()
+        .map(|&(name, length)| Choice {
+            name: name.into(),
+            detail: match length {
+                Some(length) => format!(
+                    "Back on at {}",
+                    (chrono::Local::now() + chrono::Duration::from_std(length).unwrap_or_default())
+                        .format("%H:%M")
+                ),
+                None => "Resume from here or the tray menu.".into(),
+            },
+            choose: Callback::new(move |()| pause(length)),
+        })
+        .collect()
+}
+
+/// One of a [`ChoiceMenu`]'s choices.
+#[derive(Clone, PartialEq)]
+struct Choice {
+    name: String,
+    detail: String,
+    choose: Callback<()>,
+}
+
+/// A button in the bar opening a short menu of choices, such as how to calibrate.
 #[component]
-fn CalibrateMenu(open: Signal<bool>, on_quick: Callback<()>, on_guided: Callback<()>) -> Element {
+fn ChoiceMenu(
+    /// Names the menu, for styling and for keeping arrow keys to its own choices.
+    name: &'static str,
+    label: &'static str,
+    /// An icon before the label, as SVG markup.
+    #[props(default)]
+    icon: &'static str,
+    #[props(default)] primary: bool,
+    open: Signal<bool>,
+    choices: Vec<Choice>,
+) -> Element {
     let mut button = use_signal(|| None::<std::rc::Rc<MountedData>>);
     let mut close = move || {
         open.set(false);
@@ -812,50 +905,41 @@ fn CalibrateMenu(open: Signal<bool>, on_quick: Callback<()>, on_guided: Callback
             });
         }
     };
-    let choices = [
-        (
-            "Quick",
-            "Sit nicely for 3 seconds. Handy after you move your laptop or chair.",
-            on_quick,
-        ),
-        (
-            "Guided, full screen",
-            "Step by step, about 30 seconds. Best the first time, or at a new desk.",
-            on_guided,
-        ),
-    ];
+    let primary = if primary { "primary" } else { "" };
     rsx! {
-        div { class: "calibrate",
+        div { class: "choices {name}",
             button {
-                class: "control primary calibrate-button",
-                title: "Calibrate",
+                class: "control {primary} choices-button",
                 "aria-haspopup": "menu",
                 "aria-expanded": "{open()}",
                 onmounted: move |event| button.set(Some(event.data())),
                 onclick: move |_| open.toggle(),
-                "Calibrate"
+                if !icon.is_empty() {
+                    span { class: "icon", dangerous_inner_html: icon }
+                }
+                "{label}"
                 span { class: "icon caret", dangerous_inner_html: CARET_UP }
             }
             if open() {
                 div { class: "backdrop", onclick: move |_| close() }
                 div {
-                    class: "calibrate-menu",
+                    class: "choices-menu",
                     role: "menu",
-                    "aria-label": "Calibrate",
+                    "aria-label": label,
                     onkeydown: move |event| match event.key() {
                         Key::Escape => {
                             event.prevent_default();
                             close();
                         }
                         key => {
-                            if move_focus(".calibrate-option", &key) {
+                            if move_focus(&format!(".{name} .choice"), &key) {
                                 event.prevent_default();
                             }
                         }
                     },
-                    for (index, (name, detail, choose)) in choices.into_iter().enumerate() {
+                    for (index, Choice { name, detail, choose }) in choices.into_iter().enumerate() {
                         button {
-                            class: "calibrate-option",
+                            class: "choice",
                             role: "menuitem",
                             onmounted: move |event| async move {
                                 if index == 0 {
@@ -866,8 +950,8 @@ fn CalibrateMenu(open: Signal<bool>, on_quick: Callback<()>, on_guided: Callback
                                 close();
                                 choose(());
                             },
-                            span { class: "calibrate-name", "{name}" }
-                            span { class: "calibrate-detail", "{detail}" }
+                            span { class: "choice-name", "{name}" }
+                            span { class: "choice-detail", "{detail}" }
                         }
                     }
                 }
@@ -1042,6 +1126,15 @@ mod tests {
             }
         ));
         assert!(worth_moving(still, Mark::Lost));
+    }
+
+    #[test]
+    fn tray_pause_ids_name_their_lengths() {
+        for (index, (_, length)) in PAUSES.iter().enumerate() {
+            assert_eq!(pause_for(&pause_id(index)), Some(*length));
+        }
+        assert_eq!(pause_for("pause-9"), None);
+        assert_eq!(pause_for("quick"), None);
     }
 
     #[test]

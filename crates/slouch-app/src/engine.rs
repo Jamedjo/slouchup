@@ -15,7 +15,7 @@ use crate::config::{self, APP_NAME};
 use crate::finder::FaceFinder;
 use crate::frames;
 use crate::history::{History, Sitting};
-use crate::notifier::{Notifier, OnSnooze};
+use crate::notifier::{Notifier, OnPause};
 use crate::source::{Capture, Source};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(200);
@@ -32,17 +32,23 @@ const RETRY_CAMERA: Duration = Duration::from_secs(5);
 /// Laptop lids tilt rarely, so the background needn't be checked every frame.
 const DRIFT_INTERVAL: Duration = Duration::from_secs(1);
 const OUT_OF_FRAME: &str = "You're out of frame.";
-/// How long Snooze holds back nudges, while watching carries on.
-pub const SNOOZE: Duration = Duration::from_secs(30 * 60);
+/// How long the nudge's Pause button turns the camera off for.
+pub const NUDGE_PAUSE: Duration = Duration::from_secs(30 * 60);
+/// The ways to pause, as menus offer them: a length, or `None` until you resume.
+pub const PAUSES: [(&str, Option<Duration>); 3] = [
+    ("Pause for 30 minutes", Some(NUDGE_PAUSE)),
+    ("Pause for 1 hour", Some(Duration::from_secs(60 * 60))),
+    ("Pause until I resume", None),
+];
 
 pub enum Command {
     Recalibrate,
     Game {
         screens: Vec<String>,
     },
-    Pause(bool),
-    /// Hold back nudges for [`SNOOZE`], or let them through again.
-    Snooze(bool),
+    /// Turn the camera off, for a while or until [`Command::Resume`].
+    Pause(Option<Duration>),
+    Resume,
     Change(Change),
     /// Switch camera, by device id or `None` for the first that works.
     UseCamera(Option<String>),
@@ -79,7 +85,7 @@ pub struct View {
     pub banner: Option<Banner>,
     /// What the calibration game is asking for right now.
     pub look_at: Option<LookAt>,
-    pub snoozed: bool,
+    pub paused: bool,
 }
 
 impl Default for View {
@@ -94,7 +100,7 @@ impl Default for View {
             lines: None,
             banner: None,
             look_at: None,
-            snoozed: false,
+            paused: false,
         }
     }
 }
@@ -188,7 +194,8 @@ pub struct Engine {
     started: Instant,
     results_until: Option<Instant>,
     paused: bool,
-    snoozed_until: Option<Instant>,
+    /// When a pause for a while ends, by the wall clock, so time asleep counts towards it.
+    resume_at: Option<chrono::DateTime<chrono::Local>>,
     history: SharedHistory,
     history_saved: Instant,
     /// Off when the user has asked for no history to be kept.
@@ -205,7 +212,7 @@ const HISTORY_SAVE_EVERY: Duration = Duration::from_secs(10 * 60);
 pub struct Links {
     pub preview: FrameSlot,
     pub files: Files,
-    pub on_snooze: OnSnooze,
+    pub on_pause: OnPause,
     pub history: SharedHistory,
     pub events: UnboundedSender<View>,
     pub commands: Receiver<Command>,
@@ -218,7 +225,7 @@ impl Engine {
         let Links {
             preview,
             files,
-            on_snooze,
+            on_pause,
             history,
             events,
             commands,
@@ -232,7 +239,7 @@ impl Engine {
             .flatten()
             .unwrap_or(settings.thresholds);
         let crashed = (
-            Notifier::new(files.clone(), on_snooze.clone()),
+            Notifier::new(files.clone(), on_pause.clone()),
             events.clone(),
         );
         let engine = Engine {
@@ -244,7 +251,7 @@ impl Engine {
             pending: VecDeque::new(),
             persist,
             finder: FaceFinder::new(),
-            notifier: Notifier::new(files, on_snooze),
+            notifier: Notifier::new(files, on_pause),
             events,
             commands,
             settings,
@@ -257,7 +264,7 @@ impl Engine {
             started: Instant::now(),
             results_until: None,
             paused: false,
-            snoozed_until: None,
+            resume_at: None,
             history,
             history_saved: Instant::now(),
             recording: !persist || preferences.keep_history,
@@ -288,7 +295,7 @@ impl Engine {
     fn publish(&mut self) {
         self.view.settings = self.settings;
         self.view.calibrated = self.calibrated;
-        self.view.snoozed = self.snoozed();
+        self.view.paused = self.paused;
         if self
             .results_until
             .is_some_and(|until| Instant::now() > until)
@@ -297,17 +304,6 @@ impl Engine {
             self.view.banner = None;
         }
         let _ = self.events.unbounded_send(self.view.clone());
-    }
-
-    /// Whether nudges are held back, ending a snooze whose time is up.
-    fn snoozed(&mut self) -> bool {
-        if self
-            .snoozed_until
-            .is_some_and(|until| Instant::now() > until)
-        {
-            self.snoozed_until = None;
-        }
-        self.snoozed_until.is_some()
     }
 
     fn set_status(&mut self, mood: Mood, status: impl Into<String>) {
@@ -330,7 +326,17 @@ impl Engine {
                 self.handle(command, &mut announce);
             }
             if self.paused {
-                self.set_status(Mood::Paused, "Paused");
+                if self.resume_at.is_some_and(|at| chrono::Local::now() >= at) {
+                    self.resume();
+                    self.notifier
+                        .info(&format!("{APP_NAME} is back on"), "Your pause is up.");
+                    continue;
+                }
+                let status = match self.resume_at {
+                    Some(at) => format!("Paused until {}", at.format("%H:%M")),
+                    None => "Paused".into(),
+                };
+                self.set_status(Mood::Paused, status);
                 self.publish();
                 std::thread::sleep(WATCH_INTERVAL);
                 continue;
@@ -372,24 +378,19 @@ impl Engine {
                     *announce = true;
                 }
             }
-            Command::Pause(paused) => {
-                self.paused = paused;
-                if paused {
+            Command::Pause(length) => {
+                self.resume_at = length.map(|length| {
+                    chrono::Local::now()
+                        + chrono::Duration::from_std(length).expect("pauses are short")
+                });
+                if !std::mem::replace(&mut self.paused, true) {
                     self.save_history();
                     // Dropping the capture releases the camera, so its light goes off.
                     self.capture = None;
                     self.notifier.dismiss();
-                } else {
-                    self.reopen_at = None;
                 }
             }
-            Command::Snooze(snoozed) => {
-                self.snoozed_until = snoozed.then(|| Instant::now() + SNOOZE);
-                if snoozed {
-                    self.notifier.dismiss();
-                }
-                self.publish();
-            }
+            Command::Resume => self.resume(),
             Command::Change(change) => self.change(change),
             Command::ClearHistory => {
                 self.history.lock().unwrap().clear();
@@ -420,6 +421,12 @@ impl Engine {
                 self.save_preferences();
             }
         }
+    }
+
+    fn resume(&mut self) {
+        self.paused = false;
+        self.resume_at = None;
+        self.reopen_at = None;
     }
 
     fn change(&mut self, change: Change) {
@@ -518,12 +525,9 @@ impl Engine {
                 self.pending.push_back(command);
             }
         }
-        self.pending.iter().any(|c| {
-            matches!(
-                c,
-                Command::Pause(true) | Command::UseCamera(_) | Command::Quit
-            )
-        })
+        self.pending
+            .iter()
+            .any(|c| matches!(c, Command::Pause(_) | Command::UseCamera(_) | Command::Quit))
     }
 
     fn act(&self, pose: Option<Pose>) {
@@ -583,9 +587,6 @@ impl Engine {
                 .record(chrono::Local::now(), sitting);
         }
         match update.action {
-            Some(Action::Nag(problem)) if self.snoozed() => {
-                tracing::info!("nag held back by snooze: {problem}");
-            }
             Some(Action::Nag(problem)) => {
                 tracing::info!(
                     "nag: {problem} (camera drift {:.0}px)",

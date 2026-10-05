@@ -17,6 +17,8 @@ mod instance;
 #[cfg(target_os = "linux")]
 mod launcher;
 #[cfg(target_os = "macos")]
+mod mac_notify;
+#[cfg(target_os = "macos")]
 mod mac_tray;
 mod notifier;
 mod onboarding;
@@ -65,6 +67,9 @@ fn main() {
     let files = art::write_files(&cache).expect("writing artwork to the cache directory");
     if args.test_notification {
         Notifier::new(files, Arc::new(|| {})).nag("You're 20% closer to the screen than usual.");
+        // macOS posts in the background, which ends with the app.
+        #[cfg(target_os = "macos")]
+        std::thread::sleep(std::time::Duration::from_secs(1));
         return;
     }
     let start_on = if args.settings {

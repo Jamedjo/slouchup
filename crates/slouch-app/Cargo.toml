@@ -16,7 +16,6 @@ dirs = "6"
 futures-channel = "0.3"
 futures-timer = "3"
 futures-util = "0.3"
-notify-rust = "4.18"
 posture = { version = "0.0.4", path = "../posture" }
 resvg = "0.45"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -35,15 +34,22 @@ winresource = "0.1"
 [target.'cfg(target_os = "linux")'.dependencies]
 tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 
+# macOS posts through UserNotifications instead, which drops legacy notifications once an app
+# registers with it.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+notify-rust = "4.18"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "NSButton", "NSControl", "NSResponder", "NSScreen", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSGeometry", "NSSet", "NSString", "objc2-core-foundation"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+
 # The release workflow installs vpk, which builds the Windows installer and the AppImage, at the
 # version locked for this.
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 velopack = "1.2.161"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "NSButton", "NSControl", "NSResponder", "NSScreen", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSGeometry", "NSString", "objc2-core-foundation"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"

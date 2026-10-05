@@ -1,23 +1,21 @@
 //! Desktop notifications, branded as this app rather than a generic sender.
 //!
 //! The nudge has "I'm up" and "Pause 30 min" buttons, but only "Pause 30 min" on macOS, which shows
-//! one action button beside its own Close. Freedesktop servers can also update a notification
-//! already on screen. macOS and Windows fire and forget, so there the nudge isn't withdrawn when you
-//! sit up; pausing is in the tray's popover everywhere.
+//! one action button beside its own Close. Freedesktop servers and macOS can also take the nudge
+//! away when you sit up. Windows fires and forgets, so there it stays; pausing is in the tray's
+//! popover everywhere.
 
+#[cfg(not(target_os = "macos"))]
 use std::path::Path;
 use std::sync::Arc;
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(windows)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(not(target_os = "macos"))]
 use notify_rust::{Notification, Timeout};
 
 use crate::art::Files;
 use crate::config::APP_NAME;
-
-/// The installed app's `CFBundleIdentifier`, from `packaging/macos/Info.plist`.
-#[cfg(target_os = "macos")]
-const BUNDLE_ID: &str = "dev.weareframes.slouchup";
 
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
@@ -28,41 +26,61 @@ pub type OnPause = Arc<dyn Fn() + Send + Sync>;
 const PAUSE: &str = "pause";
 const QUIT: &str = "quit";
 
-/// "I'm up" needs nothing doing: the notification closes and the tracker sees you sit up. macOS
-/// shows a single action button, so there the notification's own Close stands in for it.
+/// "I'm up" needs nothing doing: the notification closes and the tracker sees you sit up.
+#[cfg(not(target_os = "macos"))]
 fn with_buttons(notification: &mut Notification) -> &mut Notification {
-    if !cfg!(target_os = "macos") {
-        notification.action("up", "I'm up");
-    }
+    notification.action("up", "I'm up");
     notification.action(PAUSE, "Pause 30 min")
 }
 
 pub struct Notifier {
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     files: Files,
     /// The one slouch notification, so repeats replace it and sitting up can dismiss it.
     #[cfg(all(unix, not(target_os = "macos")))]
     nudge: Option<xdg::Nudge>,
     /// Whether a nudge's buttons are still waiting for an answer.
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    #[cfg(windows)]
     awaiting_answer: Arc<AtomicBool>,
+    #[cfg(not(target_os = "macos"))]
     on_pause: OnPause,
 }
 
 impl Notifier {
     pub fn new(files: Files, on_pause: OnPause) -> Self {
+        #[cfg(target_os = "macos")]
+        mac::start(on_pause);
         Self {
             files,
             #[cfg(all(unix, not(target_os = "macos")))]
             nudge: None,
-            #[cfg(not(all(unix, not(target_os = "macos"))))]
+            #[cfg(windows)]
             awaiting_answer: Arc::default(),
+            #[cfg(not(target_os = "macos"))]
             on_pause,
         }
     }
 
     /// A short notice.
+    #[cfg(not(target_os = "macos"))]
     pub fn info(&self, summary: &str, body: &str) {
         show(&base(&self.files, &self.files.icon, summary, body, 3000));
+    }
+
+    /// A short notice. Each replaces the last, as they'd be out of date.
+    #[cfg(target_os = "macos")]
+    pub fn info(&self, summary: &str, body: &str) {
+        crate::mac_notify::post("info", summary, body, None);
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn nag(&mut self, reason: &str) {
+        crate::mac_notify::post(
+            mac::NUDGE_ID,
+            NUDGE,
+            &nudge_body(reason),
+            Some(mac::NUDGE_ID),
+        );
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -79,9 +97,9 @@ impl Notifier {
         }
     }
 
-    /// A thread waits until the nudge is answered or dismissed, which on macOS can be long after
-    /// its banner has gone, so only one waits at a time, and nudges meanwhile come without buttons.
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    /// A thread waits until the nudge is answered or dismissed, which can be long after its toast
+    /// has gone, so only one waits at a time, and nudges meanwhile come without buttons.
+    #[cfg(windows)]
     pub fn nag(&mut self, reason: &str) {
         let mut notification = base(
             &self.files,
@@ -119,9 +137,12 @@ impl Notifier {
         if let Some(nudge) = self.nudge.take() {
             nudge.close();
         }
+        #[cfg(target_os = "macos")]
+        crate::mac_notify::withdraw(mac::NUDGE_ID);
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn base(files: &Files, icon: &Path, summary: &str, body: &str, timeout_ms: u32) -> Notification {
     let mut notification = Notification::new();
     notification
@@ -134,8 +155,6 @@ fn base(files: &Files, icon: &Path, summary: &str, body: &str, timeout_ms: u32) 
     notification.hint(notify_rust::Hint::DesktopEntry(
         crate::config::DESKTOP_ID.into(),
     ));
-    #[cfg(target_os = "macos")]
-    send_as_this_app();
     #[cfg(windows)]
     if let Some(sender) = crate::windows_shell::toast_sender(&files.icon) {
         notification.app_id(sender);
@@ -164,6 +183,13 @@ pub fn camera_off(files: &Files) {
 }
 
 /// A notice that the app is in the tray, with a button to quit it instead.
+#[cfg(target_os = "macos")]
+fn in_tray(_files: &Files, summary: &str, body: &str) {
+    crate::mac_notify::post(mac::IN_TRAY_ID, summary, body, Some(mac::IN_TRAY_ID));
+}
+
+/// A notice that the app is in the tray, with a button to quit it instead.
+#[cfg(not(target_os = "macos"))]
 fn in_tray(files: &Files, summary: &str, body: &str) {
     let mut notification = base(files, &files.icon, summary, body, 8000);
     notification.action(QUIT, "Quit");
@@ -182,29 +208,43 @@ fn in_tray(files: &Files, summary: &str, body: &str) {
     }
 }
 
-/// Without a sender, the first notification asks AppleScript for an app called "use_default",
-/// which hangs until the Apple event times out two minutes later.
+/// The nudge's and the tray notice's buttons on macOS, which are set up once, before any is posted.
 #[cfg(target_os = "macos")]
-fn send_as_this_app() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        if let Err(error) = notify_rust::set_application(BUNDLE_ID) {
-            tracing::debug!("notifications not sent as {BUNDLE_ID}: {error}");
-        }
-    });
+mod mac {
+    use std::sync::Arc;
+
+    use super::{OnPause, PAUSE, QUIT};
+    use crate::mac_notify::{self, Category};
+
+    /// Both the nudge's id, so a new nudge replaces the last, and its kind, for its button.
+    pub const NUDGE_ID: &str = "nudge";
+    pub const IN_TRAY_ID: &str = "in-tray";
+
+    pub fn start(on_pause: OnPause) {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            mac_notify::start(&[
+                Category {
+                    id: NUDGE_ID,
+                    buttons: &[(PAUSE, "Pause 30 min")],
+                },
+                Category {
+                    id: IN_TRAY_ID,
+                    buttons: &[(QUIT, "Quit")],
+                },
+            ]);
+            mac_notify::on_action(PAUSE, on_pause);
+            mac_notify::on_action(QUIT, Arc::new(crate::quit));
+        });
+    }
 }
 
-/// macOS waits for each notification to be delivered, so it sends from its own thread there.
+#[cfg(not(target_os = "macos"))]
 fn show(notification: &Notification) {
-    #[cfg(target_os = "macos")]
-    {
-        let notification = notification.clone();
-        std::thread::spawn(move || send(&notification));
-    }
-    #[cfg(not(target_os = "macos"))]
     send(notification);
 }
 
+#[cfg(not(target_os = "macos"))]
 fn send(notification: &Notification) {
     if let Err(error) = notification.show() {
         tracing::warn!("notification failed: {error}");
@@ -266,6 +306,7 @@ fn nudge_body(reason: &str) -> String {
 }
 
 /// Text made safe for a notification body, which freedesktop servers read as markup.
+#[cfg(not(target_os = "macos"))]
 fn escape(text: &str) -> String {
     if cfg!(all(unix, not(target_os = "macos"))) {
         text.replace('&', "&amp;")
@@ -273,14 +314,5 @@ fn escape(text: &str) -> String {
             .replace('>', "&gt;")
     } else {
         text.to_string()
-    }
-}
-
-#[cfg(all(test, target_os = "macos"))]
-mod tests {
-    #[test]
-    fn bundle_id_matches_the_info_plist() {
-        let plist = include_str!("../../../packaging/macos/Info.plist");
-        assert!(plist.contains(&format!("<string>{}</string>", super::BUNDLE_ID)));
     }
 }

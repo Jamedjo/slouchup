@@ -39,6 +39,16 @@ pub fn list_cameras() -> Vec<CameraInfo> {
         .collect()
 }
 
+/// Stand-ins for `--demo` to choose between, each showing the drawn person.
+pub fn demo_cameras() -> Vec<CameraInfo> {
+    [("demo-1", "Demo camera"), ("demo-2", "Second demo camera")]
+        .map(|(id, name)| CameraInfo {
+            id: id.into(),
+            name: name.into(),
+        })
+        .into()
+}
+
 /// A running source, holding its newest frame for the engine to take. Dropping it releases
 /// the camera, so the camera's light goes off.
 pub struct Capture {

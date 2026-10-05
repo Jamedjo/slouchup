@@ -23,16 +23,17 @@ status and has:
 
 - **Show camera** — SlouchUp's window, on your camera with the baseline and slouch lines, and how
   close each measure is to its limit. Its header switches between the Camera, History and Settings
-  views. Calibrate, under the picture, offers a quick calibration or the guided, full-screen one,
-  as does the C key.
+  views. On the picture's bottom strip, as on a video call, are Pause, which turns the camera off,
+  say for a call; with more than one camera, a button listing them; and Calibrate, offering a
+  quick calibration or the guided, full-screen one.
 - **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
   your screens, slouching, and leaning in, then set the limits halfway between.
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
 - **History** — the window's History view: how you've sat today, quarter hour by quarter hour,
   and how much of each of the last seven days you spent slouching.
 - **Settings** — the window's Settings view: how soon to nudge, how sensitive it is compared with
-  your calibration, whether to keep history, and which camera to use. Each section keeps its finer
-  controls in an expandable at its end.
+  your calibration, and whether to keep history. Each section keeps its finer controls in an
+  expandable at its end.
 - **Snooze for 30 minutes** — no nudges for a while, though the tray icon carries on. The nudge
   itself has a Snooze button too.
 - **Pause** and **Quit**.

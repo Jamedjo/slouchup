@@ -1,4 +1,5 @@
-//! The settings view: when to nudge, what counts as slouching, history, and which camera to use.
+//! The settings view: when to nudge, what counts as slouching, and history. The camera is chosen
+//! on the picture's bottom strip.
 //! Changes apply as they're made.
 
 use dioxus::prelude::*;
@@ -7,7 +8,6 @@ use posture::{Settings, Thresholds};
 use crate::art::Theme;
 use crate::config::{self, Preferences};
 use crate::engine::{Change, Command};
-use crate::source;
 use crate::ui::Bridge;
 
 /// The head-drop slider's range, in face sizes.
@@ -153,7 +153,6 @@ pub fn SettingsPage(
                 preferences.with_mut(|p| p.keep_history = keep);
                 send.call(Change::KeepHistory(keep));
             } }
-            CameraRow {}
         }
     }
 }
@@ -230,40 +229,6 @@ fn HistoryRow(keep: bool, on_keep: EventHandler<bool>) -> Element {
                 }
             }
             p { class: "hint", "Only on this computer. Turning it off keeps what's there." }
-        }
-    }
-}
-
-#[component]
-fn CameraRow() -> Element {
-    let bridge = use_context::<Bridge>();
-    let cameras = use_hook(source::list_cameras);
-    let mut camera = use_signal(|| {
-        bridge
-            .persist
-            .then(|| config::load_preferences().camera)
-            .flatten()
-    });
-    rsx! {
-        section { class: "row-section",
-            h2 { "Camera" }
-            select {
-                "aria-label": "Camera",
-                onchange: move |event| {
-                    let id = Some(event.value()).filter(|id| !id.is_empty());
-                    camera.set(id.clone());
-                    bridge.send(Command::UseCamera(id));
-                },
-                option { value: "", selected: camera().is_none(), "First camera that works" }
-                for found in cameras {
-                    option {
-                        value: "{found.id}",
-                        selected: camera().as_deref() == Some(found.id.as_str()),
-                        "{found.name}"
-                    }
-                }
-            }
-            p { class: "hint", "Everything runs on your computer. Video never leaves it." }
         }
     }
 }

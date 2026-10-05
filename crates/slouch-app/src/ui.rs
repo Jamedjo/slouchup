@@ -20,6 +20,7 @@ use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::StreamExt;
 
 use crate::art::{self, Files, Mark, Mood, Theme};
+use crate::camera_picker::CameraPicker;
 use crate::camera_view::{CameraView, FrameSlot};
 use crate::config::{self, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, SNOOZE, View};
@@ -27,6 +28,7 @@ use crate::history_window::HistoryPage;
 use crate::notifier;
 use crate::onboarding::Onboarding;
 use crate::settings::SettingsPage;
+use crate::source::{self, CameraInfo};
 use crate::{screens, still_running, style};
 
 /// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
@@ -89,7 +91,9 @@ impl Page {
 }
 
 /// Line icons in the design system's stroke, coloured by the text around them.
-const CAMERA_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10.5 5-3v9l-5-3"/></svg>"#;
+const PAUSE_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg>"#;
+const RESUME_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5Z"/></svg>"#;
+pub const CAMERA_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10.5 5-3v9l-5-3"/></svg>"#;
 const HISTORY_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"><path d="M4 20h16M7 16v-4M12 16V6M17 16V9"/></svg>"#;
 const SETTINGS_ICON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.5"/><circle cx="10" cy="17" r="2.5"/></svg>"#;
 
@@ -326,12 +330,15 @@ fn panel_theme() -> Theme {
     if light { Theme::Day } else { Theme::Night }
 }
 
+/// The least time between listing the cameras again, since listing opens each one.
+const RELIST_AFTER: Duration = Duration::from_secs(5);
+
 /// How often to check whether the panel has changed theme, say for night mode.
 const PANEL_CHECK: Duration = Duration::from_secs(2);
 
 /// Move focus between the elements matching `selector` for an arrow, Home or End `key`, as a
 /// list does, and say whether it was one of those.
-fn move_focus(selector: &str, key: &Key) -> bool {
+pub fn move_focus(selector: &str, key: &Key) -> bool {
     let step = match key {
         Key::ArrowDown | Key::ArrowRight => "(i + 1) % all.length",
         Key::ArrowUp | Key::ArrowLeft => "(i - 1 + all.length) % all.length",
@@ -381,6 +388,32 @@ pub fn App() -> Element {
     });
     let mut paused = use_signal(|| bridge.onboarding);
     let mut onboarding = use_signal(|| bridge.onboarding);
+    let mut cameras = use_signal(Vec::<CameraInfo>::new);
+    let list_cameras = use_callback({
+        let demo = !bridge.persist;
+        move |()| {
+            spawn(async move {
+                let (found, listed) = futures_channel::oneshot::channel();
+                std::thread::spawn(move || {
+                    let _ = found.send(if demo {
+                        source::demo_cameras()
+                    } else {
+                        source::list_cameras()
+                    });
+                });
+                if let Ok(listed) = listed.await {
+                    cameras.set(listed);
+                }
+            });
+        }
+    });
+    use_hook(move || list_cameras(()));
+    let mut chosen = use_signal(|| {
+        bridge
+            .persist
+            .then(|| config::load_preferences().camera)
+            .flatten()
+    });
     let monitors = use_signal(Vec::<MonitorHandle>::new);
     let look_here = use_hook(|| SharedLookAt(Arc::new(Mutex::new(LookAt::default()))));
     // The game's full-screen window: which screen it's for, and the window once it has opened.
@@ -448,19 +481,40 @@ pub fn App() -> Element {
     use_wry_event_handler({
         let main = window().id();
         let say_camera_off = say_camera_off.clone();
+        let mut listed = Instant::now();
         move |event, _| {
-            if let Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                window_id,
-                ..
+            let Event::WindowEvent {
+                event, window_id, ..
             } = event
-                && *window_id == main
-            {
-                if paused() {
-                    say_camera_off();
-                } else {
-                    say_still_running();
+            else {
+                return;
+            };
+            if *window_id != main {
+                return;
+            }
+            match event {
+                WindowEvent::CloseRequested if paused() => say_camera_off(),
+                WindowEvent::CloseRequested => say_still_running(),
+                // Coming back to the window is when a camera plugged in meanwhile is wanted.
+                WindowEvent::Focused(true) if listed.elapsed() > RELIST_AFTER => {
+                    listed = Instant::now();
+                    list_cameras(());
                 }
+                _ => {}
+            }
+        }
+    });
+    let toggle_pause = use_callback({
+        let bridge = bridge.clone();
+        let tray = tray.clone();
+        move |()| {
+            let now_paused = !paused();
+            paused.set(now_paused);
+            tray.pause.set_text(pause_label(now_paused));
+            bridge.send(Command::Pause(now_paused));
+            // Resuming turns the camera on, which is all the welcome was waiting for.
+            if !now_paused {
+                onboarding.set(false);
             }
         }
     });
@@ -475,6 +529,7 @@ pub fn App() -> Element {
                     tracing::warn!("couldn't save the camera choice: {error}");
                 }
             }
+            chosen.set(camera.clone());
             bridge.send(Command::UseCamera(camera));
             bridge.send(Command::Pause(false));
             paused.set(false);
@@ -483,6 +538,16 @@ pub fn App() -> Element {
             start_game(());
         }
     };
+    let choose_camera = use_callback({
+        let bridge = bridge.clone();
+        move |id: String| {
+            chosen.set(Some(id.clone()));
+            // The demo's cameras are stand-ins; the engine keeps drawing the person.
+            if bridge.persist {
+                bridge.send(Command::UseCamera(Some(id)));
+            }
+        }
+    });
     let not_now = move |()| {
         window().set_visible(false);
         say_camera_off();
@@ -490,7 +555,6 @@ pub fn App() -> Element {
 
     let on_menu = use_hook({
         let bridge = bridge.clone();
-        let tray = tray.clone();
         move || {
             std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
                 "show" => open_page(Page::Camera),
@@ -498,16 +562,7 @@ pub fn App() -> Element {
                 "history" => open_page(Page::History),
                 "game" => start_game(()),
                 "recalibrate" => bridge.send(Command::Recalibrate),
-                "pause" => {
-                    let now_paused = !paused();
-                    paused.set(now_paused);
-                    tray.pause.set_text(pause_label(now_paused));
-                    bridge.send(Command::Pause(now_paused));
-                    // Resuming turns the camera on, which is all the welcome was waiting for.
-                    if !now_paused {
-                        onboarding.set(false);
-                    }
-                }
+                "pause" => toggle_pause(()),
                 "snooze" => bridge.send(Command::Snooze(!view.peek().snoozed)),
                 "quit" => crate::quit(),
                 _ => {}
@@ -615,6 +670,16 @@ pub fn App() -> Element {
         };
     }
     let shown = page();
+    // The saved camera when it's plugged in, as the engine does; otherwise the first.
+    let active_camera = {
+        let cameras = cameras.read();
+        let chosen = chosen.read();
+        cameras
+            .iter()
+            .find(|c| Some(&c.id) == chosen.as_ref())
+            .or(cameras.first())
+            .map(|c| c.id.clone())
+    };
     rsx! {
         div { class: "app", "data-theme": Theme::Night.name(),
             header { class: "topbar",
@@ -636,7 +701,18 @@ pub fn App() -> Element {
             }
             main { class: "view",
                 match shown {
-                    Page::Camera => rsx! { CameraPage { current: view(), paused: paused(), start_game, calibrate_open } },
+                    Page::Camera => rsx! {
+                        CameraPage {
+                            current: view(),
+                            paused: paused(),
+                            cameras: cameras(),
+                            active_camera: active_camera.clone().unwrap_or_default(),
+                            choose_camera,
+                            toggle_pause,
+                            start_game,
+                            calibrate_open,
+                        }
+                    },
                     Page::History => rsx! { HistoryPage {} },
                     Page::Settings => rsx! {
                         SettingsPage {
@@ -651,12 +727,16 @@ pub fn App() -> Element {
     }
 }
 
-/// The live picture with its lines and readings, and a bar under it, as video calls have, with
-/// Calibrate.
+/// The live picture with its lines and readings, and the controls on its bottom strip, as video
+/// calls have: the camera, Pause and Calibrate.
 #[component]
 fn CameraPage(
     current: View,
     paused: bool,
+    cameras: Vec<CameraInfo>,
+    active_camera: String,
+    choose_camera: Callback<String>,
+    toggle_pause: Callback<()>,
     start_game: Callback<()>,
     calibrate_open: Signal<bool>,
 ) -> Element {
@@ -682,20 +762,37 @@ fn CameraPage(
                 if let Some(banner) = &current.banner {
                     BannerView { banner: banner.clone() }
                 }
+                if paused {
+                    div { class: "paused-cover",
+                        p { "{APP_NAME} is paused, and your camera is off." }
+                        button { class: "button primary", onclick: move |_| toggle_pause(()), "Resume" }
+                    }
+                }
                 div { class: "status mood-{current.mood:?}",
                     PostureMark { mood: current.mood }
-                    "{current.status}"
+                    span { class: "status-text", "{current.status}" }
                     if current.snoozed {
                         span { class: "snoozed", "Nudges snoozed" }
                     }
-                }
-            }
-            div { class: "controls",
-                if !paused {
-                    CalibrateMenu {
-                        open: calibrate_open,
-                        on_quick: move |()| bridge.send(Command::Recalibrate),
-                        on_guided: start_game,
+                    div { class: "controls",
+                        if cameras.len() > 1 {
+                            CameraPicker { cameras, active: active_camera, on_choose: choose_camera }
+                        }
+                        button {
+                            class: "control pause-button",
+                            "aria-pressed": "{paused}",
+                            title: if paused { "Turn the camera back on" } else { "Turn the camera off" },
+                            onclick: move |_| toggle_pause(()),
+                            span { class: "icon", dangerous_inner_html: if paused { RESUME_ICON } else { PAUSE_ICON } }
+                            "{pause_label(paused)}"
+                        }
+                        if !paused {
+                            CalibrateMenu {
+                                open: calibrate_open,
+                                on_quick: move |()| bridge.send(Command::Recalibrate),
+                                on_guided: start_game,
+                            }
+                        }
                     }
                 }
             }

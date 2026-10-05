@@ -156,6 +156,9 @@ pub struct Preferences {
     pub cooldown: f64,
     /// Whether the history window's record is kept. Turning it off stops recording.
     pub keep_history: bool,
+    /// The limits the last calibration game set, which the settings show the chosen limits
+    /// against. `None` until a game is played after this was added.
+    pub calibrated: Option<Thresholds>,
     /// Whether the AppImage has added itself to the app launcher before, so an entry the user
     /// removed isn't added back.
     pub added_to_launcher: bool,
@@ -170,6 +173,7 @@ impl Default for Preferences {
             min_gap: defaults.min_gap,
             cooldown: defaults.cooldown,
             keep_history: true,
+            calibrated: None,
             added_to_launcher: false,
         }
     }

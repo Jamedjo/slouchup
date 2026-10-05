@@ -30,8 +30,9 @@ status and has:
 - **Recalibrate** — three seconds of sitting nicely sets a new baseline.
 - **History** — the window's History view: how you've sat today, quarter hour by quarter hour,
   and how much of each of the last seven days you spent slouching.
-- **Settings** — the window's Settings view: which camera to use, the two slouch limits, and how
-  soon and how often to nudge.
+- **Settings** — the window's Settings view: how soon to nudge, how sensitive it is compared with
+  your calibration, whether to keep history, and which camera to use. Each section keeps its finer
+  controls in an expandable at its end.
 - **Snooze for 30 minutes** — no nudges for a while, though the tray icon carries on. The nudge
   itself has a Snooze button too.
 - **Pause** and **Quit**.

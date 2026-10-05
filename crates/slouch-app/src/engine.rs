@@ -60,7 +60,8 @@ pub enum Change {
     MinGap(f64),
     Cooldown(f64),
     KeepHistory(bool),
-    Defaults,
+    /// The nudge timings back to their defaults. The limits go back with `Drop` and `Lean`.
+    NudgeDefaults,
 }
 
 /// What the UI draws. Positions are in camera-frame pixels.
@@ -71,6 +72,8 @@ pub struct View {
     pub frame_size: (f32, f32),
     pub reading: Option<Reading>,
     pub settings: Settings,
+    /// The limits the last calibration game set.
+    pub calibrated: Thresholds,
     /// Where the baseline eye line and the slouch line currently fall.
     pub lines: Option<(f32, f32)>,
     pub banner: Option<Banner>,
@@ -87,6 +90,7 @@ impl Default for View {
             frame_size: (640.0, 480.0),
             reading: None,
             settings: Settings::default(),
+            calibrated: Thresholds::default(),
             lines: None,
             banner: None,
             look_at: None,
@@ -176,6 +180,7 @@ pub struct Engine {
     events: UnboundedSender<View>,
     commands: Receiver<Command>,
     settings: Settings,
+    calibrated: Thresholds,
     tracker: Option<Tracker>,
     drift: Option<CameraDrift>,
     drift_checked: Option<Instant>,
@@ -220,6 +225,12 @@ impl Engine {
         } = links;
         // A demo is for looking at, so it mustn't overwrite the real calibration.
         let persist = !matches!(source, Source::Demo);
+        let preferences = config::load_preferences();
+        // Limits saved before calibrations were kept apart most likely came from a game.
+        let calibrated = persist
+            .then_some(preferences.calibrated)
+            .flatten()
+            .unwrap_or(settings.thresholds);
         let crashed = (
             Notifier::new(files.clone(), on_snooze.clone()),
             events.clone(),
@@ -237,6 +248,7 @@ impl Engine {
             events,
             commands,
             settings,
+            calibrated,
             preview,
             tracker: None,
             drift: None,
@@ -248,7 +260,7 @@ impl Engine {
             snoozed_until: None,
             history,
             history_saved: Instant::now(),
-            recording: !persist || config::load_preferences().keep_history,
+            recording: !persist || preferences.keep_history,
         };
         std::thread::Builder::new()
             .name("slouch-engine".into())
@@ -275,6 +287,7 @@ impl Engine {
 
     fn publish(&mut self) {
         self.view.settings = self.settings;
+        self.view.calibrated = self.calibrated;
         self.view.snoozed = self.snoozed();
         if self
             .results_until
@@ -418,7 +431,12 @@ impl Engine {
             Change::MinGap(gap) => settings.min_gap = gap,
             Change::Cooldown(cooldown) => settings.cooldown = cooldown,
             Change::KeepHistory(keep) => self.recording = keep,
-            Change::Defaults => *settings = Settings::default(),
+            Change::NudgeDefaults => {
+                let defaults = Settings::default();
+                settings.grace = defaults.grace;
+                settings.min_gap = defaults.min_gap;
+                settings.cooldown = defaults.cooldown;
+            }
         }
         if let Some(tracker) = &mut self.tracker {
             tracker.set_settings(self.settings);
@@ -445,6 +463,7 @@ impl Engine {
             min_gap: self.settings.min_gap,
             cooldown: self.settings.cooldown,
             keep_history: self.recording,
+            calibrated: Some(self.calibrated),
             ..config::load_preferences()
         };
         if self.persist
@@ -774,8 +793,14 @@ impl Engine {
             self.publish();
             return false;
         };
-        self.settings.thresholds = result.thresholds(self.settings.thresholds);
+        let calibrated = result.thresholds(self.calibrated);
+        self.settings.thresholds = self
+            .settings
+            .thresholds
+            .recalibrated(self.calibrated, calibrated);
+        self.calibrated = calibrated;
         self.save_thresholds(self.settings.thresholds);
+        self.save_preferences();
         self.start_tracking(result.baseline, drift);
         let line = |name: &str, m: &posture::MetricResult| {
             let new = m

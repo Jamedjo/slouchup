@@ -95,7 +95,8 @@ SlouchUp runs on Linux, macOS and Windows, and CI builds and tests it on all thr
 
 Every push to `main` packages it for each platform, and a `v*` tag publishes the packages as a
 [release](https://github.com/Jamedjo/slouchup/releases). `scripts/release.sh` raises the version
-for a release, and once that's merged, pushes its tag. The packages are:
+for a release, and once that's merged, pushes its tag; [RELEASE.md](RELEASE.md) has the steps.
+The packages are:
 
 - Linux: `slouchup-x86_64.AppImage`, from `packaging/linux/appimage.sh` with Velopack. It looks
   for a newer release every few hours, downloads it in the background, and replaces itself with it
@@ -135,6 +136,8 @@ from the OpenCV model zoo (MIT). The camera preview script comes from
 [Fredoka](https://github.com/hafontia/Fredoka-One) and [Figtree](https://github.com/erikdkennedy/figtree)
 (SIL Open Font License, in [`crates/slouch-app/fonts`](crates/slouch-app/fonts)), built in so the
 app never fetches fonts.
+
+[DEVELOPMENT.md](DEVELOPMENT.md) covers building, testing and packaging.
 
 To refresh the screenshots, run `scripts/screenshots.sh`; it uses a headless sway session, so it
 doesn't touch your desktop.

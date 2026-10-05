@@ -21,23 +21,22 @@ once you pass your slouch limit, marked by notches on the frame, they turn over 
 turn dotted when you're out of frame, and grey while you've paused. Its menu shows the current
 status and has:
 
-- **Pause for 30 minutes**, **Pause for 1 hour** and **Pause until I resume** — the camera turns
-  off, say for a call, and comes back on by itself when the time is up. While paused, **Resume**
-  takes their place. The nudge has a Pause 30 min button too, and the time paused is left out of
-  your history.
-- **Show camera** — SlouchUp's window, on your camera with the baseline and slouch lines, and how
-  close each measure is to its limit. Its header switches between the Camera, History and Settings
-  views. On the picture's bottom strip, as on a video call, are Pause, which offers the same
-  choices as the tray's; with more than one camera, a button listing them; and Calibrate, offering
-  a quick calibration or the guided, full-screen one.
-- **Calibration game** — full-screen prompts walk you through sitting up while looking at each of
-  your screens, slouching, and leaning in, then set the limits halfway between.
-- **Recalibrate** — three seconds of sitting nicely sets a new baseline.
-- **History** — the window's History view: how you've sat today, quarter hour by quarter hour,
-  and how much of each of the last seven days you spent slouching.
-- **Settings** — the window's Settings view: how soon to nudge, how sensitive it is compared with
-  your calibration, and whether to keep history. Each section keeps its finer controls in an
-  expandable at its end.
+- **SlouchUp** — opens SlouchUp's window, on your camera with the baseline and slouch lines, and
+  how close each measure is to its limit. Its header switches between the Camera, History and
+  Settings views. On the picture's bottom strip, as on a video call, are Pause, which offers the
+  same choices as the tray's; with more than one camera, a button listing them; and Calibrate,
+  offering a quick calibration or the guided, full-screen one.
+- **Pause** — for 30 minutes, for 1 hour or until you resume. The camera turns off, say for a
+  call, and comes back on by itself when the time is up. While paused, **Resume** takes its place.
+  The nudge has a Pause 30 min button too, and the time paused is left out of your history.
+- **Calibrate** — **Quick** is three seconds of sitting nicely, with a notification to say when,
+  so it works with the window closed. **Guided, full screen** walks you through sitting up while
+  looking at each of your screens, slouching, and leaning in, then sets the limits halfway between.
+- **Camera**, **History** and **Settings** — open the window on that view. History shows how
+  you've sat today, quarter hour by quarter hour, and how much of each of the last seven days you
+  spent slouching. Settings has how soon to nudge, how sensitive it is compared with your
+  calibration, and whether to keep history, each section with its finer controls in an expandable
+  at its end.
 - **Quit**.
 
 The first time it starts, a welcome asks before turning the camera on, lets you pick which camera,

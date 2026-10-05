@@ -9,7 +9,9 @@ use crossbeam_channel::Sender;
 use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::tao::monitor::MonitorHandle;
 use dioxus::desktop::tao::window::{Fullscreen, Icon as WindowIcon};
-use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
+use dioxus::desktop::trayicon::menu::{
+    Icon as MenuIcon, IconMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu,
+};
 use dioxus::desktop::trayicon::{Icon, TrayIcon};
 use dioxus::desktop::{
     Config, DesktopContext, WindowBuilder, use_muda_event_handler, use_tray_menu_event_handler,
@@ -107,9 +109,10 @@ struct Tray {
     icon: TrayIcon,
     menu: Menu,
     status: MenuItem,
-    /// One item for each of [`PAUSES`], swapped for `resume` while paused.
-    pauses: Vec<MenuItem>,
+    /// The ways to pause, swapped for `resume` while paused.
+    pause: Submenu,
     resume: MenuItem,
+    calibrate: Submenu,
     /// What's showing, since setting the icon goes over D-Bus and the engine updates 5 times a second.
     shown: RefCell<Shown>,
     slide: RefCell<Slide>,
@@ -231,8 +234,18 @@ fn pause_for(id: &str) -> Option<Option<Duration>> {
     PAUSES.get(index).map(|&(_, length)| length)
 }
 
-/// Where the pause items start in the tray menu, after the status and a separator.
-const PAUSES_AT: usize = 2;
+/// The tray's names for [`PAUSES`], under Pause.
+const TRAY_PAUSES: [&str; 3] = ["30 minutes", "1 hour", "Until I resume"];
+
+/// Where Pause sits in the tray menu, after SlouchUp, the status and a separator.
+const PAUSE_AT: usize = 3;
+
+/// A menu icon from `svg`, with any `currentColor` in `colour`.
+fn menu_icon(svg: &str, colour: &str) -> Option<MenuIcon> {
+    let size = 32;
+    let svg = svg.replace("currentColor", colour);
+    MenuIcon::from_rgba(art::rasterise(&svg, size, size), size, size).ok()
+}
 
 impl Tray {
     fn new(theme: Theme, paused: bool) -> Self {
@@ -243,29 +256,43 @@ impl Tray {
             paused,
         };
         let status = MenuItem::with_id("status", &shown.status, false, None);
-        let pauses: Vec<MenuItem> = PAUSES
-            .iter()
-            .enumerate()
-            .map(|(index, (label, _))| MenuItem::with_id(pause_id(index), label, true, None))
-            .collect();
-        let resume = MenuItem::with_id("resume", "Resume", true, None);
-        let menu = Menu::new();
-        menu.append_items(&[&status, &PredefinedMenuItem::separator()])
-            .expect("tray menu builds");
-        if paused {
-            menu.append(&resume).expect("tray menu builds");
-        } else {
-            for pause in &pauses {
-                menu.append(pause).expect("tray menu builds");
-            }
+        let pause = Submenu::with_id("pause", "Pause", true);
+        for (index, label) in TRAY_PAUSES.iter().enumerate() {
+            pause
+                .append(&MenuItem::with_id(pause_id(index), label, true, None))
+                .expect("pause menu builds");
         }
+        let resume = MenuItem::with_id("resume", "Resume", true, None);
+        // Menus follow the system's theme, as the panel does, so its text colour suits the icons.
+        let ink = match theme {
+            Theme::Night => "#F2EADB",
+            Theme::Day => "#2B2724",
+        };
+        let row = |id: &str, label: &str, svg: &str| {
+            IconMenuItem::with_id(id, label, true, menu_icon(svg, ink), None)
+        };
+        let calibrate = Submenu::with_id_and_items(
+            "calibrate",
+            "Calibrate",
+            !paused,
+            &[
+                &MenuItem::with_id("quick", "Quick", true, None),
+                &MenuItem::with_id("guided", "Guided, full screen", true, None),
+            ],
+        )
+        .expect("calibrate menu builds");
+        let menu = Menu::new();
         menu.append_items(&[
+            &row("show", APP_NAME, &art::app_icon_svg()),
+            &status,
             &PredefinedMenuItem::separator(),
-            &MenuItem::with_id("show", "Show camera", true, None),
-            &MenuItem::with_id("game", "Calibration game", true, None),
-            &MenuItem::with_id("recalibrate", "Recalibrate", true, None),
-            &MenuItem::with_id("history", "History…", true, None),
-            &MenuItem::with_id("settings", "Settings…", true, None),
+            if paused { &resume } else { &pause },
+            &calibrate,
+            &PredefinedMenuItem::separator(),
+            &row("camera", "Camera", CAMERA_ICON),
+            &row("history", "History", HISTORY_ICON),
+            &row("settings", "Settings", SETTINGS_ICON),
+            &PredefinedMenuItem::separator(),
             &MenuItem::with_id("quit", "Quit", true, None),
         ])
         .expect("tray menu builds");
@@ -281,8 +308,9 @@ impl Tray {
             icon,
             menu,
             status,
-            pauses,
+            pause,
             resume,
+            calibrate,
             slide: Slide::settled_at(shown.mark).into(),
             shown: shown.into(),
             sliding: false.into(),
@@ -310,23 +338,22 @@ impl Tray {
         sliding
     }
 
-    /// Offer the ways to pause, or while paused, Resume in their place.
+    /// Offer Pause, or while paused, Resume in its place. Calibrating needs the
+    /// camera, so it's offered only while it's on.
     fn offer_pauses(&self, offer: bool) {
         let result = if offer {
-            self.menu.remove(&self.resume).and_then(|()| {
-                let pauses: Vec<&dyn dioxus::desktop::trayicon::menu::IsMenuItem> =
-                    self.pauses.iter().map(|p| p as _).collect();
-                self.menu.insert_items(&pauses, PAUSES_AT)
-            })
+            self.menu
+                .remove(&self.resume)
+                .and_then(|()| self.menu.insert(&self.pause, PAUSE_AT))
         } else {
-            self.pauses
-                .iter()
-                .try_for_each(|pause| self.menu.remove(pause))
-                .and_then(|()| self.menu.insert(&self.resume, PAUSES_AT))
+            self.menu
+                .remove(&self.pause)
+                .and_then(|()| self.menu.insert(&self.resume, PAUSE_AT))
         };
         if let Err(error) = result {
             tracing::warn!("couldn't update the tray menu: {error}");
         }
+        self.calibrate.set_enabled(offer);
     }
 
     /// Draw the letters where the slide has them now, and say whether they're still moving.
@@ -589,11 +616,12 @@ pub fn App() -> Element {
         let bridge = bridge.clone();
         move || {
             std::rc::Rc::new(std::cell::RefCell::new(move |id: &str| match id {
-                "show" => open_page(Page::Camera),
+                "show" => show_main_window(),
+                "camera" => open_page(Page::Camera),
                 "settings" => open_page(Page::Settings),
                 "history" => open_page(Page::History),
-                "game" => start_game(()),
-                "recalibrate" => bridge.send(Command::Recalibrate),
+                "guided" => start_game(()),
+                "quick" => bridge.send(Command::Recalibrate),
                 "resume" => resume(()),
                 "quit" => crate::quit(),
                 id => {

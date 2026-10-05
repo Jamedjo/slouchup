@@ -632,8 +632,8 @@ impl Engine {
         self.view.reading = None;
         if announce {
             self.notifier.info(
-                "Sit up straight",
-                "Hold it for a few seconds. This sets how you usually sit.",
+                "Sit up nicely for 3 seconds",
+                "This sets how you usually sit.",
             );
         }
         let mut postures = Vec::new();
@@ -664,8 +664,7 @@ impl Engine {
             baseline.size
         );
         self.start_tracking(baseline, reference);
-        self.notifier
-            .info(&format!("{APP_NAME} is on"), "Calibrated just now.");
+        self.notifier.info("Got it", &format!("{APP_NAME} is on."));
         true
     }
 

@@ -567,6 +567,24 @@ button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
 .still-running p { margin: 0; }
 .still-running .buttons { margin-top: var(--space-2); }
 
+/* SlouchUp's own nudge card, as the notification would look. */
+.nudge-card {
+  display: flex;
+  gap: 14px;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  background: var(--ink);
+  color: var(--butter);
+  cursor: default;
+}
+.nudge-card-icon, .nudge-card-icon svg { flex: none; width: 44px; height: 44px; }
+.nudge-card-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.nudge-card-title { padding-top: 6px; font: var(--weight-display) 22px/1.2 var(--font-display); }
+.nudge-card-reason { margin: 0; font-size: 14px; line-height: 1.45; color: var(--sand); }
+.nudge-card-why { margin: 0; font-size: 12px; color: var(--text-muted); }
+.nudge-card .buttons { margin-top: var(--space-1); }
+
 /* History */
 
 .history {

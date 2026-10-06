@@ -20,6 +20,7 @@ mod launcher;
 #[cfg(target_os = "macos")]
 mod mac_tray;
 mod notifier;
+mod nudge_card;
 mod onboarding;
 mod popover;
 mod screens;

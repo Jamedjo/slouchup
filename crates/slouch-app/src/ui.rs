@@ -22,11 +22,11 @@ use crate::config::{self, APP_ID, APP_NAME};
 use crate::engine::{Banner, Command, LookAt, PAUSES, View};
 use crate::guided::{Answers, Guided, GuidedProps, SharedLookAt};
 use crate::history_window::HistoryPage;
-use crate::notifier;
 use crate::onboarding::Onboarding;
 use crate::popover::{self, Action, PopoverWindow};
 use crate::settings::SettingsPage;
 use crate::source::{self, CameraInfo};
+use crate::{notifier, nudge_card};
 use crate::{screens, still_running, style};
 
 /// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
@@ -640,6 +640,33 @@ pub fn App() -> Element {
                     }
                     tray.sliding.set(false);
                 });
+            }
+        }
+    });
+
+    // SlouchUp's own nudge card, while a nudge couldn't show as a notification. Its window is kept
+    // once opened and only hidden, since opening one takes a couple of seconds on Windows.
+    let card_reason = use_hook(|| nudge_card::Shared(Arc::new(Mutex::new(String::new()))));
+    let mut card_window = use_signal(|| None::<DesktopContext>);
+    let mut card_opening = use_signal(|| false);
+    use_effect({
+        let commands = bridge.commands.clone();
+        move || {
+            let wanted = view.read().card.clone();
+            if let Some(reason) = &wanted {
+                *card_reason.0.lock().unwrap() = reason.clone();
+            }
+            match card_window.read().as_ref() {
+                Some(card) => card.set_visible(wanted.is_some()),
+                None if wanted.is_some() && !*card_opening.peek() => {
+                    card_opening.set(true);
+                    let pending = nudge_card::open(card_reason.clone(), commands.clone());
+                    spawn(async move {
+                        card_window.set(Some(pending.await));
+                        card_opening.set(false);
+                    });
+                }
+                None => {}
             }
         }
     });

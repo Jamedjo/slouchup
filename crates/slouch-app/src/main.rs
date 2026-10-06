@@ -27,6 +27,7 @@ mod settings;
 mod source;
 mod still_running;
 mod style;
+mod tray_reach;
 mod ui;
 #[cfg(windows)]
 mod windows_shell;

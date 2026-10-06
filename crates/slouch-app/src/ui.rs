@@ -27,7 +27,7 @@ use crate::onboarding::Onboarding;
 use crate::popover::{self, Action, PopoverWindow};
 use crate::settings::SettingsPage;
 use crate::source::{self, CameraInfo};
-use crate::{screens, still_running, style};
+use crate::{screens, still_running, style, tray_reach};
 
 /// What every window shares: the stylesheet, the app icon, no menu bar, and its theme's ground
 /// painted before the page loads, so it doesn't flash white.
@@ -307,6 +307,9 @@ fn panel_theme() -> Theme {
 /// The least time between listing the cameras again, since listing opens each one.
 const RELIST_AFTER: Duration = Duration::from_secs(5);
 
+/// How often to look for the tray icon, which the system can move out of sight at any time.
+const TRAY_CHECK: Duration = Duration::from_secs(10);
+
 /// How often to check whether the panel has changed theme, say for night mode.
 const PANEL_CHECK: Duration = Duration::from_secs(2);
 
@@ -494,19 +497,82 @@ pub fn App() -> Element {
     let say_still_running = use_hook(|| {
         let files = bridge.files.clone();
         once(move || {
-            still_running::open();
+            still_running::open(false);
             notifier::still_running(&files);
         })
     });
+    // With no tray and nowhere to minimise to, the first close says how to bring the window back.
+    let say_no_tray = use_hook(|| once(|| still_running::open(true)));
     let say_camera_off = use_hook(|| {
         let files = bridge.files.clone();
         once(move || notifier::camera_off(&files))
+    });
+    // Where the tray icon is, and while it can't be seen, a place on the taskbar or in the Dock.
+    let mut tray_place = use_signal(|| None::<tray_reach::Place>);
+    use_future({
+        let tray = tray.clone();
+        move || {
+            let tray = tray.clone();
+            async move {
+                // The panel takes a moment to place a new icon.
+                let mut wait = Duration::from_secs(3);
+                loop {
+                    futures_timer::Delay::new(wait).await;
+                    wait = TRAY_CHECK;
+                    let now = tray_reach::place(&tray.icon);
+                    if *tray_place.peek() != now {
+                        tracing::info!("tray icon: {now:?}");
+                        tray_place.set(now);
+                    }
+                }
+            }
+        }
+    });
+    let tray_hidden = move || tray_place.peek().is_some_and(tray_reach::Place::hidden);
+    // While the tray icon is hidden, closing minimises the window, where there's a taskbar or Dock
+    // to minimise it to.
+    let minimises = move || tray_hidden() && tray_reach::has_task_list();
+    // Taken up by the event loop, which alone can change the Dock and finish a close.
+    let dock_wanted = use_hook(|| std::rc::Rc::new(Cell::new(None::<bool>)));
+    let minimise_pending = use_hook(|| std::rc::Rc::new(Cell::new(false)));
+    use_effect({
+        let dock_wanted = dock_wanted.clone();
+        move || {
+            let hidden = tray_place().is_some_and(tray_reach::Place::hidden);
+            dock_wanted.set(Some(hidden));
+            let main = window();
+            if hidden && !main.is_visible() {
+                main_shown.set(true);
+                main.set_visible(true);
+                main.set_minimized(tray_reach::has_task_list());
+            }
+        }
     });
     use_wry_event_handler({
         let main = window().id();
         let say_camera_off = say_camera_off.clone();
         let mut listed = Instant::now();
-        move |event, _| {
+        move |event, target| {
+            #[cfg(target_os = "macos")]
+            if let Some(in_dock) = dock_wanted.take() {
+                use dioxus::desktop::tao::platform::macos::{
+                    ActivationPolicy, EventLoopWindowTargetExtMacOS,
+                };
+                target.set_activation_policy_at_runtime(if in_dock {
+                    ActivationPolicy::Regular
+                } else {
+                    ActivationPolicy::Accessory
+                });
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (target, &dock_wanted);
+            // Closing hides the window first; with no tray to come back to, it's minimised after.
+            if minimise_pending.get() && !matches!(event, Event::WindowEvent { .. }) {
+                minimise_pending.set(false);
+                let main = window();
+                main.set_visible(true);
+                main.set_minimized(true);
+            }
             let Event::WindowEvent {
                 event, window_id, ..
             } = event
@@ -516,10 +582,13 @@ pub fn App() -> Element {
             if *window_id != main {
                 return;
             }
-            if matches!(event, WindowEvent::CloseRequested) {
+            // Closed with no tray to come back to, it's minimised instead, so its page stays.
+            if matches!(event, WindowEvent::CloseRequested) && !minimises() {
                 main_shown.set(false);
             }
             match event {
+                WindowEvent::CloseRequested if minimises() => minimise_pending.set(true),
+                WindowEvent::CloseRequested if tray_hidden() => say_no_tray(),
                 WindowEvent::CloseRequested if paused() => say_camera_off(),
                 WindowEvent::CloseRequested => say_still_running(),
                 // Coming back to the window is when a camera plugged in meanwhile is wanted.
@@ -571,9 +640,13 @@ pub fn App() -> Element {
         }
     });
     let not_now = move |()| {
-        main_shown.set(false);
-        window().set_visible(false);
-        say_camera_off();
+        if minimises() {
+            window().set_minimized(true);
+        } else {
+            main_shown.set(false);
+            window().set_visible(false);
+            say_camera_off();
+        }
     };
 
     use_future({
@@ -755,6 +828,7 @@ pub fn App() -> Element {
                     }
                 }
             }
+            tray_reach::TrayStrip { place: tray_place() }
             main { class: "view",
                 match shown {
                     Page::Camera => rsx! {

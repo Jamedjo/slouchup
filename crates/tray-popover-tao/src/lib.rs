@@ -9,8 +9,9 @@
 //! - **macOS**: the window becomes a non-activating `NSPanel` at the status bar's level, on every
 //!   Space and over full-screen apps, so opening it doesn't switch Spaces or activate the app.
 //! - **Windows**: rounded corners on Windows 11, and no taskbar button.
-//! - **Linux**: moved with `set_outer_position`, which works on X11. Wayland doesn't let a client
-//!   place its own window; that needs layer-shell.
+//! - **Linux**: moved with `set_outer_position` on X11. On Wayland, where a client can't place its
+//!   own window, it's a wlr-layer-shell surface anchored to the panel's edge, when the compositor
+//!   has layer-shell and libgtk-layer-shell is installed; otherwise the compositor centres it.
 //!
 //! The placement and toggling are in [`tray_popover`], with no windowing library, so another
 //! adapter (winit, Blitz) can implement [`tray_popover::Surface`] alongside this one.
@@ -24,7 +25,7 @@ use tao::keyboard::Key;
 use tao::monitor::MonitorHandle;
 use tao::window::{Window, WindowBuilder, WindowId};
 pub use tray_popover;
-use tray_popover::{Monitor, Point, Popover, Rect, Size, Surface};
+use tray_popover::{Monitor, Placement, Point, Popover, Rect, Size, Surface};
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -60,6 +61,8 @@ pub fn window_builder(builder: WindowBuilder) -> WindowBuilder {
 /// A tao window made into a popover.
 pub struct TaoSurface {
     window: Arc<Window>,
+    /// A wlr-layer-shell surface, anchored to the panel rather than placed by position.
+    layered: bool,
 }
 
 impl TaoSurface {
@@ -67,7 +70,8 @@ impl TaoSurface {
     /// platform.
     pub fn new(window: Arc<Window>) -> Self {
         platform::prepare(&window);
-        Self { window }
+        let layered = platform::make_layer(&window);
+        Self { window, layered }
     }
 
     pub fn window(&self) -> &Window {
@@ -93,6 +97,17 @@ impl Surface for TaoSurface {
     fn cursor(&self) -> Option<Point> {
         let at = self.window.cursor_position().ok()?;
         Some(Point::new(at.x.round() as i32, at.y.round() as i32))
+    }
+
+    fn show_placed(&mut self, placement: Placement) {
+        if self.layered
+            && let Some(monitor) = self.monitors().get(placement.monitor).copied()
+        {
+            platform::place_layer(&self.window, placement, monitor);
+            platform::show(&self.window);
+            return;
+        }
+        self.show_at(placement.position);
     }
 
     fn show_at(&mut self, position: Point) {

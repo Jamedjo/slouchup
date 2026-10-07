@@ -20,6 +20,8 @@ pub enum Host {
     Budgie,
     Lxqt,
     Cinnamon,
+    /// COSMIC's panel.
+    Cosmic,
     /// snixembed, which shows StatusNotifierItems in an older XEmbed tray such as i3bar's.
     Snixembed,
     /// Ayatana's indicator service, whose panels open the menu and never activate.
@@ -55,7 +57,8 @@ impl Host {
             | Host::Swaybar
             | Host::Budgie
             | Host::Lxqt
-            | Host::Cinnamon => Units::Logical,
+            | Host::Cinnamon
+            | Host::Cosmic => Units::Logical,
             Host::Snixembed => Units::Origin,
             Host::Ayatana => Units::NoClicks,
             Host::Unknown => Units::Unknown,
@@ -100,6 +103,8 @@ impl Host {
             Host::Lxqt
         } else if any(&["x-cinnamon", "cinnamon"]) {
             Host::Cinnamon
+        } else if any(&["cosmic"]) {
+            Host::Cosmic
         } else if any(&["gnome", "ubuntu", "pop"]) {
             Host::Gnome
         } else if any(&["sway"]) {
@@ -144,6 +149,7 @@ mod tests {
         assert_eq!(session("Budgie:GNOME"), Host::Budgie);
         assert_eq!(session("LXQt"), Host::Lxqt);
         assert_eq!(session("X-Cinnamon"), Host::Cinnamon);
+        assert_eq!(session("COSMIC"), Host::Cosmic);
         assert_eq!(session("sway"), Host::Swaybar);
         assert_eq!(session("Hyprland"), Host::Waybar);
         assert_eq!(session("i3"), Host::Snixembed);

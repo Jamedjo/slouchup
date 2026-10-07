@@ -1,13 +1,15 @@
-//! X11, through GTK: tao moves the window and GDK knows the work area. On Wayland the window
-//! still opens, wherever the compositor puts it, since a client can't place its own window
-//! there; layer-shell can.
+//! Linux, through GTK. On X11 tao moves the window and GDK knows the work area. On Wayland a
+//! client can't place its own window, so the popover is a layer-shell surface where it can be.
+
+#[path = "layer.rs"]
+mod layer;
 
 use gtk::prelude::*;
 use tao::monitor::MonitorHandle;
 use tao::platform::unix::{WindowBuilderExtUnix, WindowExtUnix};
 use tao::window::{Window, WindowBuilder};
-use tray_popover::Rect;
 use tray_popover::linux::{Host, parse_plasma_version};
+use tray_popover::{Monitor, Placement, Rect};
 
 pub fn builder(builder: WindowBuilder) -> WindowBuilder {
     builder.with_skip_taskbar(true)
@@ -17,6 +19,16 @@ pub fn prepare(window: &Window) {
     let gtk = window.gtk_window();
     gtk.set_skip_pager_hint(true);
     gtk.set_keep_above(true);
+}
+
+/// Make the window a wlr-layer-shell surface, where Wayland and libgtk-layer-shell allow, and
+/// say whether it is one.
+pub fn make_layer(window: &Window) -> bool {
+    layer::prepare(window.gtk_window())
+}
+
+pub fn place_layer(window: &Window, placement: Placement, monitor: Monitor) {
+    layer::place(window.gtk_window(), placement, monitor);
 }
 
 pub fn show(window: &Window) {

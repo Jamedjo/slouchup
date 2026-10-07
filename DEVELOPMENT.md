@@ -133,9 +133,10 @@ describe.
 - **The tray** is tray-icon's own, newer than the one dioxus-desktop re-exports, and on Linux it
   uses ksni, so a left click reaches the app as a StatusNotifierItem `Activate(x, y)`. Panels give
   that position in device or logical pixels, or not at all; `tray_popover::linux::Host` keeps the
-  table. On X11 the popover opens by the icon; on Wayland the compositor places it, until it
-  moves to layer-shell. Where a panel never sends clicks, starting SlouchUp again opens its
-  window.
+  table. On X11 the popover opens by the icon. On Wayland it's a wlr-layer-shell surface
+  anchored under the icon, through libgtk-layer-shell (`libgtk-layer-shell0` on Ubuntu), loaded
+  when it's there rather than linked; GNOME has no layer-shell, so there the compositor centres it.
+  Where a panel never sends clicks, starting SlouchUp again opens its window.
 - **The Windows installer's splash** progress bar is coloured with vpk's `--splashProgressColor`;
   the splash image is drawn by `cargo run --example splash`.
 - **Reinstalling on Windows**: uninstalling can leave `Update.exe` in `%LOCALAPPDATA%\slouchup`,

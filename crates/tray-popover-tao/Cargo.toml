@@ -13,6 +13,7 @@ tray-popover = { version = "0.0.4", path = "../tray-popover" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+libloading = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

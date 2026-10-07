@@ -55,3 +55,15 @@ pub fn work_area(handle: &MonitorHandle, _bounds: Rect) -> Option<Rect> {
         work.bottom - work.top,
     ))
 }
+
+/// Only Wayland places a popover by anchoring it to the panel.
+pub fn make_layer(_window: &Window) -> bool {
+    false
+}
+
+pub fn place_layer(
+    _window: &Window,
+    _placement: tray_popover::Placement,
+    _monitor: tray_popover::Monitor,
+) {
+}

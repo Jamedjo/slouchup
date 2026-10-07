@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::{Anchor, Monitor, Point, Size, Step, Toggle, place};
+use crate::{Anchor, Monitor, Placement, Point, Size, Step, Toggle, place};
 
 /// The window a popover shows in, as a windowing library offers it. An adapter implements this
 /// for its own window type; [`Popover`] decides when and where to show it.
@@ -13,6 +13,11 @@ pub trait Surface {
     fn cursor(&self) -> Option<Point>;
     /// Move the window to `position`, show it above everything else and give it the focus.
     fn show_at(&mut self, position: Point);
+    /// Show the window where `placement` puts it. An adapter that can't place a window by
+    /// position, as on Wayland, can anchor it to the panel's edge instead.
+    fn show_placed(&mut self, placement: Placement) {
+        self.show_at(placement.position);
+    }
     /// Give the window the focus again, where it is.
     fn focus(&mut self);
     fn hide(&mut self);
@@ -83,8 +88,10 @@ impl<S: Surface> Popover<S> {
                     &surface.monitors(),
                     surface.cursor(),
                 );
-                let position = placement.map_or(Point::default(), |p| p.position);
-                self.surface.show_at(position);
+                match placement {
+                    Some(placement) => self.surface.show_placed(placement),
+                    None => self.surface.show_at(Point::default()),
+                }
             }
             Step::Hide => self.surface.hide(),
             Step::Refocus => self.surface.focus(),
@@ -105,6 +112,7 @@ mod tests {
         shown_at: Option<Point>,
         cursor: Option<Point>,
         refocused: u32,
+        placed: Option<Placement>,
     }
 
     impl Surface for Fake {
@@ -126,6 +134,11 @@ mod tests {
 
         fn show_at(&mut self, position: Point) {
             self.shown_at = Some(position);
+        }
+
+        fn show_placed(&mut self, placement: Placement) {
+            self.placed = Some(placement);
+            self.show_at(placement.position);
         }
 
         fn hide(&mut self) {
@@ -185,6 +198,16 @@ mod tests {
         popover.settle();
         assert_eq!(popover.surface().shown_at, shown);
         assert!(shown.is_some());
+    }
+
+    #[test]
+    fn the_surface_is_told_the_panel_edge_it_opens_from() {
+        let mut popover = Popover::new(Fake::default());
+        popover.click(Anchor::Icon(Rect::new(1700, 1040, 32, 32)), Instant::now());
+        let placed = popover.surface().placed.expect("placed");
+        assert_eq!(placed.edge, crate::Edge::Bottom);
+        assert_eq!(placed.monitor, 0);
+        assert_eq!(Some(placed.position), popover.surface().shown_at);
     }
 
     #[test]

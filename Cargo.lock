@@ -6195,6 +6195,7 @@ name = "tray-popover-tao"
 version = "0.0.4"
 dependencies = [
  "gtk",
+ "libloading 0.8.9",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",

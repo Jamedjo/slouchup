@@ -233,3 +233,15 @@ fn with_earlier_class(this: &AnyObject, call: impl FnOnce()) {
         entry.1 = left;
     }
 }
+
+/// Only Wayland places a popover by anchoring it to the panel.
+pub fn make_layer(_window: &Window) -> bool {
+    false
+}
+
+pub fn place_layer(
+    _window: &Window,
+    _placement: tray_popover::Placement,
+    _monitor: tray_popover::Monitor,
+) {
+}

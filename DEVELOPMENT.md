@@ -54,9 +54,11 @@ tray, and opens its welcome on the first run. The flags, from `slouchup --help`:
 | `--card` | With `--demo`, shows every nudge in SlouchUp's own card, as when notifications can't show |
 | `--test-notification` | Sends a sample nudge and exits |
 
-Use `--demo` for anything you show or screenshot. The `slouch-app` examples help with diagnosing:
-`cargo run --example cameras` lists cameras and their formats, and `cargo run --example monitors`
-lists screens as the app names them.
+Use `--demo` for anything you show or screenshot. SlouchUp's own nudge card is kept out of screen
+captures; set `SLOUCHUP_QA_CAPTURE=1` to let QA screenshots see it.
+
+The `slouch-app` examples help with diagnosing: `cargo run --example cameras` lists cameras and
+their formats, and `cargo run --example monitors` lists screens as the app names them.
 
 ## Tests and CI
 

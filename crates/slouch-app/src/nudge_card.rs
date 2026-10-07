@@ -15,6 +15,8 @@ use crate::ui::{RisingUp, window_config};
 
 const WIDTH: f64 = 380.0;
 const HEIGHT: f64 = 200.0;
+/// Set for QA screenshots, which a card kept out of screen captures can't otherwise show.
+const QA_CAPTURE: &str = "SLOUCHUP_QA_CAPTURE";
 /// Room left between the card and the screen's edge, and on Windows, the taskbar.
 const MARGIN: f64 = 16.0;
 const TASKBAR: f64 = 48.0;
@@ -56,7 +58,7 @@ pub fn open(reason: Shared, commands: Sender<Command>) -> PendingDesktopContext 
         // Windows would otherwise take focus each time the card is shown again. Elsewhere a window
         // that can't take focus doesn't take clicks either.
         .with_focusable(!cfg!(windows))
-        .with_content_protection(true)
+        .with_content_protection(std::env::var(QA_CAPTURE).as_deref() != Ok("1"))
         .with_visible_on_all_workspaces(true);
     if let Some(place) = place {
         builder = builder.with_position(place);

@@ -232,6 +232,8 @@ pub struct Args {
     pub settings: bool,
     pub history: bool,
     pub test_notification: bool,
+    /// Open the first run's welcome, as for screenshots with the demo person.
+    pub welcome: bool,
 }
 
 pub fn parse_args() -> Args {
@@ -245,10 +247,11 @@ pub fn parse_args() -> Args {
             "--settings" => args.settings = true,
             "--history" => args.history = true,
             "--test-notification" => args.test_notification = true,
+            "--welcome" => args.welcome = true,
             "--camera" => args.camera = raw.next().and_then(|n| n.parse().ok()),
             "--help" | "-h" => {
                 println!(
-                    "Usage: slouchup [--show] [--game] [--settings] [--history] [--camera N | --demo] [--test-notification]"
+                    "Usage: slouchup [--show] [--game] [--settings] [--history] [--camera N | --demo] [--welcome] [--test-notification]"
                 );
                 std::process::exit(0);
             }

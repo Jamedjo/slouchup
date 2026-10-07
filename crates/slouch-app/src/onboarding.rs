@@ -147,7 +147,15 @@ pub fn Onboarding(
     on_start: EventHandler<Option<String>>,
     on_later: EventHandler<()>,
 ) -> Element {
-    let cameras = use_hook(source::list_cameras);
+    let demo = !use_context::<Bridge>().persist;
+    // Listing opens each camera, so the demo lists its stand-ins instead.
+    let cameras = use_hook(move || {
+        if demo {
+            source::demo_cameras()
+        } else {
+            source::list_cameras()
+        }
+    });
     let mut camera = use_signal(|| chosen);
     rsx! {
         div { class: "settings onboarding", "data-theme": Theme::Day.name(),

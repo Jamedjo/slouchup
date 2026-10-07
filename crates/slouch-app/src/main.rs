@@ -97,7 +97,7 @@ fn main() {
 
     let (command_tx, command_rx) = crossbeam_channel::unbounded();
     // The first run keeps the camera off until its welcome says to turn it on.
-    let onboarding = !args.demo && !config::has_thresholds();
+    let onboarding = args.welcome || (!args.demo && !config::has_thresholds());
     if onboarding {
         let _ = command_tx.send(Command::Pause(None));
     }

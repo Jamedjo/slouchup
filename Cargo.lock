@@ -523,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "camera-drift"
-version = "0.0.4"
+version = "0.0.5"
 
 [[package]]
 name = "cameras"
@@ -4252,7 +4252,7 @@ dependencies = [
 
 [[package]]
 name = "posture"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -5329,7 +5329,7 @@ dependencies = [
 
 [[package]]
 name = "slouchup"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "base64 0.22.1",
  "camera-drift",
@@ -6188,11 +6188,11 @@ dependencies = [
 
 [[package]]
 name = "tray-popover"
-version = "0.0.4"
+version = "0.0.5"
 
 [[package]]
 name = "tray-popover-tao"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "gtk",
  "libloading 0.8.9",
@@ -7509,7 +7509,7 @@ dependencies = [
 
 [[package]]
 name = "yunet"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "image",
  "tract-onnx",

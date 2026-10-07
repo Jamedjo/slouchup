@@ -56,6 +56,12 @@ view() {
 view settings
 # The demo comes with a made-up week, so the history view has something to chart.
 view history
+# The first run's welcome, with the demo's stand-in cameras, at the window's own size.
+"$app" --demo --welcome > "$work/welcome.log" 2>&1 &
+sleep 4.5 && swaync-client -C > /dev/null
+swaymsg -q '[title="^SlouchUp$"] floating enable, resize set 680 720, move position 20 20' && sleep 1
+grim -g "$(swaymsg -t get_tree | jq -r '.. | select(.name? == "SlouchUp") | .rect | "\(.x),\(.y) \(.width)x\(.height)"')" "$out/welcome.png"
+kill $!
 
 # The guided calibration's first card. Whichever screen holds it is the busier picture; the other
 # is plain background.

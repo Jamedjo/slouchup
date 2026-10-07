@@ -7,7 +7,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-#[cfg(not(all(unix, not(target_os = "macos"))))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use notify_rust::{Notification, Timeout};
@@ -17,7 +16,7 @@ use crate::config::APP_NAME;
 
 /// The installed app's `CFBundleIdentifier`, from `packaging/macos/Info.plist`.
 #[cfg(target_os = "macos")]
-const BUNDLE_ID: &str = "dev.weareframes.slouchup";
+pub const BUNDLE_ID: &str = "dev.weareframes.slouchup";
 
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
@@ -161,6 +160,64 @@ pub fn camera_off(files: &Files) {
         &format!("{APP_NAME} is in your tray"),
         "The camera's off. Click its icon and choose Resume when you're ready.",
     );
+}
+
+/// A real nudge, sent from the welcome to show what one looks like. `answered` is set when either
+/// of its buttons is pressed, which shows it was seen.
+pub fn test_nudge(files: &Files, answered: Arc<AtomicBool>) {
+    let mut notification = base(files, &files.nudge_icon, NUDGE, TEST_BODY, 15000);
+    match with_buttons(&mut notification).show() {
+        Ok(handle) => {
+            std::thread::spawn(move || {
+                let _ = handle.wait_for_response(|response: &notify_rust::NotificationResponse| {
+                    if matches!(response, notify_rust::NotificationResponse::Action(_)) {
+                        answered.store(true, Ordering::Release);
+                    }
+                });
+            });
+        }
+        Err(error) => tracing::warn!("notification failed: {error}"),
+    }
+}
+
+const TEST_BODY: &str = "This is a test. Real nudges come when your head drops.";
+
+/// Open the system's notification settings, on SlouchUp's own where the system allows.
+pub fn open_settings() {
+    #[cfg(target_os = "macos")]
+    let opened = {
+        // System Settings moved notifications to a new pane in Ventura, macOS 13.
+        let ventura = std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()
+            .and_then(|out| {
+                String::from_utf8_lossy(&out.stdout)
+                    .split('.')
+                    .next()?
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+            })
+            .is_some_and(|major| major >= 13);
+        let pane = if ventura {
+            "com.apple.Notifications-Settings.extension"
+        } else {
+            "com.apple.preference.notifications"
+        };
+        std::process::Command::new("open")
+            .arg(format!("x-apple.systempreferences:{pane}?id={BUNDLE_ID}"))
+            .spawn()
+    };
+    #[cfg(windows)]
+    let opened = std::process::Command::new("explorer")
+        .arg("ms-settings:notifications")
+        .spawn();
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let opened: std::io::Result<()> = Ok(());
+    if let Err(error) = opened {
+        tracing::warn!("couldn't open notification settings: {error}");
+    }
 }
 
 /// A notice that the app is in the tray, with a button to quit it instead.

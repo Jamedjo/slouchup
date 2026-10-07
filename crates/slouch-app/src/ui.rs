@@ -560,7 +560,10 @@ pub fn App() -> Element {
                 }
             }
             chosen.set(camera.clone());
-            bridge.send(Command::UseCamera(camera));
+            // The demo's cameras are stand-ins; the engine keeps drawing the person.
+            if bridge.persist {
+                bridge.send(Command::UseCamera(camera));
+            }
             bridge.send(Command::Resume);
             onboarding.set(false);
             start_game(());

@@ -1,6 +1,6 @@
 [package]
 name = "tray-popover-tao"
-version = "0.0.4"
+version = "0.0.5"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ description = "A tray popover in a tao window: borderless, above everything, and
 [dependencies]
 # The tao that dioxus-desktop builds its windows with, so its windows can be handed over.
 tao = { version = "0.34.8", default-features = false }
-tray-popover = { version = "0.0.4", path = "../tray-popover" }
+tray-popover = { version = "0.0.5", path = "../tray-popover" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

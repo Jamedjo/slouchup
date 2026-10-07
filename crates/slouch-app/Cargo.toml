@@ -1,13 +1,13 @@
 [package]
 name = "slouchup"
-version = "0.0.4"
+version = "0.0.5"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
 base64 = "0.22"
-camera-drift = { version = "0.0.4", path = "../camera-drift" }
+camera-drift = { version = "0.0.5", path = "../camera-drift" }
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 crossbeam-channel = "0.5"
 dioxus = { version = "0.7.10", features = ["desktop"] }
@@ -17,15 +17,15 @@ futures-channel = "0.3"
 futures-timer = "3"
 futures-util = "0.3"
 notify-rust = "4.18"
-posture = { version = "0.0.4", path = "../posture" }
+posture = { version = "0.0.5", path = "../posture" }
 resvg = "0.45"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1"
 # Newer than dioxus-desktop's, for clicks on Linux panels through ksni.
 tray-icon = { version = "0.26", default-features = false }
-tray-popover-tao = { version = "0.0.4", path = "../tray-popover-tao" }
-yunet = { version = "0.0.4", path = "../yunet" }
+tray-popover-tao = { version = "0.0.5", path = "../tray-popover-tao" }
+yunet = { version = "0.0.5", path = "../yunet" }
 
 [build-dependencies]
 ico = "0.5"

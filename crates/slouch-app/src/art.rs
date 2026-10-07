@@ -315,7 +315,7 @@ pub fn write_splash(path: &Path, options: &resvg::usvg::Options) -> std::io::Res
 }
 
 /// The nudge's icon: the wordmark's "up" in tomato on butter, so it stands apart from other notices.
-fn nudge_icon_svg() -> String {
+pub fn nudge_icon_svg() -> String {
     tile_svg(BUTTER, &format!(r#"<path d="{UP}" fill="{TOMATO}"/>"#))
 }
 

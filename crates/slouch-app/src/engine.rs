@@ -54,6 +54,8 @@ pub enum Command {
     Resume,
     /// A button or key pressed in the guided calibration's full-screen window.
     Guided(Answer),
+    /// Close SlouchUp's own nudge card, answered.
+    CloseCard,
     Change(Change),
     /// Switch camera, by device id or `None` for the first that works.
     UseCamera(Option<String>),
@@ -101,6 +103,8 @@ pub struct View {
     /// What the calibration game is asking for right now.
     pub look_at: Option<LookAt>,
     pub paused: bool,
+    /// A nudge's reason, shown in SlouchUp's own card because notifications can't show.
+    pub card: Option<String>,
 }
 
 impl Default for View {
@@ -116,6 +120,7 @@ impl Default for View {
             banner: None,
             look_at: None,
             paused: false,
+            card: None,
         }
     }
 }
@@ -421,9 +426,14 @@ impl Engine {
                     // Dropping the capture releases the camera, so its light goes off.
                     self.capture = None;
                     self.notifier.dismiss();
+                    self.view.card = None;
                 }
             }
             Command::Resume => self.resume(),
+            Command::CloseCard => {
+                self.view.card = None;
+                self.publish();
+            }
             Command::Change(change) => self.change(change),
             // Left over from a guided calibration that has already ended.
             Command::Guided(_) => {}
@@ -630,12 +640,18 @@ impl Engine {
                     "nag: {problem} (camera drift {:.0}px)",
                     drift * seen.height as f32
                 );
-                self.notifier.nag(&problem.to_string());
+                let reason = problem.to_string();
+                if !self.notifier.nag(&reason) {
+                    self.view.card = Some(reason);
+                }
                 if self.recording {
                     self.history.lock().unwrap().nudged(chrono::Local::now());
                 }
             }
-            Some(Action::Dismiss) => self.notifier.dismiss(),
+            Some(Action::Dismiss) => {
+                self.notifier.dismiss();
+                self.view.card = None;
+            }
             None => {}
         }
         let drift_px = drift * seen.height as f32;

@@ -7,7 +7,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-#[cfg(not(all(unix, not(target_os = "macos"))))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use notify_rust::{Notification, Timeout};
@@ -18,6 +17,9 @@ use crate::config::APP_NAME;
 /// The installed app's `CFBundleIdentifier`, from `packaging/macos/Info.plist`.
 #[cfg(target_os = "macos")]
 const BUNDLE_ID: &str = "dev.weareframes.slouchup";
+
+/// Set by `--demo --card`, to show every nudge in SlouchUp's own card instead.
+pub static FORCE_CARD: AtomicBool = AtomicBool::new(false);
 
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
@@ -65,24 +67,37 @@ impl Notifier {
         show(&base(&self.files, &self.files.icon, summary, body, 3000));
     }
 
+    /// Show the nudge, and say whether it could be.
     #[cfg(all(unix, not(target_os = "macos")))]
-    pub fn nag(&mut self, reason: &str) {
+    pub fn nag(&mut self, reason: &str) -> bool {
+        if FORCE_CARD.load(Ordering::Relaxed) {
+            return false;
+        }
         let body = nudge_body(reason);
         if let Some(nudge) = self.nudge.as_mut().filter(|n| n.is_open()) {
             nudge.update(NUDGE, &escape(&body));
-            return;
+            return true;
         }
         let mut notification = base(&self.files, &self.files.nudge_icon, NUDGE, &body, 15000);
         match with_buttons(&mut notification).show() {
-            Ok(handle) => self.nudge = Some(xdg::Nudge::listen(handle, self.on_pause.clone())),
-            Err(error) => tracing::warn!("notification failed: {error}"),
+            Ok(handle) => {
+                self.nudge = Some(xdg::Nudge::listen(handle, self.on_pause.clone()));
+                true
+            }
+            Err(error) => {
+                tracing::warn!("notification failed: {error}");
+                false
+            }
         }
     }
 
     /// A thread waits until the nudge is answered or dismissed, which on macOS can be long after
     /// its banner has gone, so only one waits at a time, and nudges meanwhile come without buttons.
     #[cfg(not(all(unix, not(target_os = "macos"))))]
-    pub fn nag(&mut self, reason: &str) {
+    pub fn nag(&mut self, reason: &str) -> bool {
+        if FORCE_CARD.load(Ordering::Relaxed) {
+            return false;
+        }
         let mut notification = base(
             &self.files,
             &self.files.nudge_icon,
@@ -92,7 +107,7 @@ impl Notifier {
         );
         if self.awaiting_answer.swap(true, Ordering::AcqRel) {
             show(&notification);
-            return;
+            return true;
         }
         match with_buttons(&mut notification).show() {
             Ok(handle) => {
@@ -106,10 +121,12 @@ impl Notifier {
                     });
                     awaiting_answer.store(false, Ordering::Release);
                 });
+                true
             }
             Err(error) => {
                 self.awaiting_answer.store(false, Ordering::Release);
                 tracing::warn!("notification failed: {error}");
+                false
             }
         }
     }

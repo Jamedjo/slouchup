@@ -51,6 +51,7 @@ tray, and opens its welcome on the first run. The flags, from `slouchup --help`:
 | `--game` | Starts the calibration game |
 | `--demo` | Uses the drawn demo person instead of a webcam, with a made-up week of history. Settings and history aren't saved, and it runs beside a real SlouchUp. |
 | `--camera N` | Uses camera N, counting from 0, instead of the saved choice |
+| `--card` | With `--demo`, shows every nudge in SlouchUp's own card, as when notifications can't show |
 | `--test-notification` | Sends a sample nudge and exits |
 
 Use `--demo` for anything you show or screenshot. The `slouch-app` examples help with diagnosing:

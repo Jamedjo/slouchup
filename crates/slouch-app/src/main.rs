@@ -63,6 +63,9 @@ fn main() {
     #[cfg(any(windows, target_os = "linux"))]
     installed::run_installer_step();
     let args = config::parse_args();
+    if args.demo && args.card {
+        notifier::FORCE_CARD.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let cache = cache_dir();
     let files = art::write_files(&cache).expect("writing artwork to the cache directory");
     if args.test_notification {

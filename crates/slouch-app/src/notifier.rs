@@ -7,7 +7,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-#[cfg(not(all(unix, not(target_os = "macos"))))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use notify_rust::{Notification, Timeout};
@@ -18,6 +17,9 @@ use crate::config::APP_NAME;
 /// The installed app's `CFBundleIdentifier`, from `packaging/macos/Info.plist`.
 #[cfg(target_os = "macos")]
 const BUNDLE_ID: &str = "dev.weareframes.slouchup";
+
+/// Set by `--demo --card`, to show every nudge in SlouchUp's own card instead.
+pub static FORCE_CARD: AtomicBool = AtomicBool::new(false);
 
 /// The nudge's title, friendly and short.
 const NUDGE: &str = "Psst, sit up";
@@ -68,6 +70,9 @@ impl Notifier {
     /// Show the nudge, and say whether it could be.
     #[cfg(all(unix, not(target_os = "macos")))]
     pub fn nag(&mut self, reason: &str) -> bool {
+        if FORCE_CARD.load(Ordering::Relaxed) {
+            return false;
+        }
         let body = nudge_body(reason);
         if let Some(nudge) = self.nudge.as_mut().filter(|n| n.is_open()) {
             nudge.update(NUDGE, &escape(&body));
@@ -90,6 +95,9 @@ impl Notifier {
     /// its banner has gone, so only one waits at a time, and nudges meanwhile come without buttons.
     #[cfg(not(all(unix, not(target_os = "macos"))))]
     pub fn nag(&mut self, reason: &str) -> bool {
+        if FORCE_CARD.load(Ordering::Relaxed) {
+            return false;
+        }
         let mut notification = base(
             &self.files,
             &self.files.nudge_icon,

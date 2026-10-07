@@ -232,6 +232,8 @@ pub struct Args {
     pub settings: bool,
     pub history: bool,
     pub test_notification: bool,
+    /// With the demo, show every nudge in SlouchUp's own card, as when notifications can't show.
+    pub card: bool,
 }
 
 pub fn parse_args() -> Args {
@@ -245,10 +247,11 @@ pub fn parse_args() -> Args {
             "--settings" => args.settings = true,
             "--history" => args.history = true,
             "--test-notification" => args.test_notification = true,
+            "--card" => args.card = true,
             "--camera" => args.camera = raw.next().and_then(|n| n.parse().ok()),
             "--help" | "-h" => {
                 println!(
-                    "Usage: slouchup [--show] [--game] [--settings] [--history] [--camera N | --demo] [--test-notification]"
+                    "Usage: slouchup [--show] [--game] [--settings] [--history] [--camera N | --demo [--card]] [--test-notification]"
                 );
                 std::process::exit(0);
             }

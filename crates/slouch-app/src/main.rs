@@ -169,7 +169,10 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title(APP_NAME)
-        .with_visible(shown_at_start)
+        // On Linux it's made hidden and shown once the app starts: a window made visible has its
+        // page wait for a frame before each change, and a hidden window on Wayland never draws
+        // one, which stalls everything the window runs.
+        .with_visible(shown_at_start && !cfg!(target_os = "linux"))
         // Tall enough for a 4:3 camera's picture to fill the window's width, and short enough
         // for a 1366x768 laptop's screen.
         .with_inner_size(dioxus::desktop::LogicalSize::new(680.0, 684.0))

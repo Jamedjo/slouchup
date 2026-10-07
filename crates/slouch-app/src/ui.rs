@@ -470,6 +470,12 @@ pub fn App() -> Element {
     // page, and dioxus-desktop stops running this window's tasks, the tray's included, until the
     // page takes the edits it was last sent. An empty page has no edits to take.
     let mut main_shown = use_signal(|| bridge.shown_at_start);
+    #[cfg(target_os = "linux")]
+    use_hook(|| {
+        if bridge.shown_at_start {
+            window().set_visible(true);
+        }
+    });
     let mut calibrate_open = use_signal(|| false);
     // Calibrating starts from the camera, where its choice opens and you can see yourself.
     let open_calibrate = use_callback(move |()| {

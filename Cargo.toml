@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-# A patched dependency, tested on its own: cargo test --manifest-path vendor/tract-core/Cargo.toml
+# Patched dependencies. tract-core's tests run on their own:
+# cargo test --manifest-path vendor/tract-core/Cargo.toml
 exclude = ["vendor"]
 
 [workspace.package]
@@ -9,7 +10,10 @@ edition = "2024"
 rust-version = "1.91"
 license = "MIT OR Apache-2.0"
 
+[patch.crates-io]
 # Vectorised 3x3 depthwise convolution and 2x2 max pooling for x86, which make YuNet about four
 # times faster. Drop once tract ships equivalent kernels.
-[patch.crates-io]
 tract-core = { path = "vendor/tract-core" }
+# The tray icon with no menu, and a right click on it sent as a left one, so on Linux a right click
+# opens the popover rather than an empty menu. Drop once ksni can leave its menu out.
+ksni = { path = "vendor/ksni" }

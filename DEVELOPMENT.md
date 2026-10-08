@@ -16,7 +16,8 @@ A Rust workspace of everything in `crates/`:
 | [`slouch-app`](crates/slouch-app) | The app itself, built as the `slouchup` binary: the Dioxus windows, tray, notifications, camera, updates and the demo person |
 
 `vendor/tract-core` is a patched tract-core with vectorised kernels that make face detection about
-four times faster on x86. It's excluded from the workspace and patched in through `Cargo.toml`.
+four times faster on x86, and `vendor/ksni` a patched ksni, the Linux tray, with no menu. Both are
+excluded from the workspace and patched in through `Cargo.toml`.
 
 Elsewhere: `packaging/` builds the installers, `scripts/` holds the release and screenshot
 scripts, `www/` is the homepage, and `docs/screenshots/` the README's images.
@@ -133,7 +134,9 @@ describe.
 - **The tray** is tray-icon's own, newer than the one dioxus-desktop re-exports, and on Linux it
   uses ksni, so a left click reaches the app as a StatusNotifierItem `Activate(x, y)`. Panels give
   that position in device or logical pixels, or not at all; `tray_popover::linux::Host` keeps the
-  table. On X11 the popover opens by the icon. On Wayland it's a wlr-layer-shell surface
+  table. ksni is patched in `vendor/ksni` to leave out the item's menu, so panels send a right
+  click as `ContextMenu(x, y)` rather than opening an empty menu, and the app gets it as a left
+  click. On X11 the popover opens by the icon. On Wayland it's a wlr-layer-shell surface
   anchored under the icon, through libgtk-layer-shell (`libgtk-layer-shell0` on Ubuntu), loaded
   when it's there rather than linked; GNOME has no layer-shell, so there the compositor centres it.
   Where a panel never sends clicks, starting SlouchUp again opens its window.

@@ -5,5 +5,10 @@
 APPDIR=$(dirname "$(readlink -f "$0")")
 export APPDIR
 export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# GNOME has no layer-shell to anchor the popover to the panel, so it keeps to X11 there, as the GTK
+# plugin had it. Elsewhere GTK picks Wayland where there is one.
+case "$XDG_CURRENT_DESKTOP" in
+*GNOME*) export GDK_BACKEND="${GDK_BACKEND:-x11}" ;;
+esac
 cd "$APPDIR/usr" || exit 1
 exec "$APPDIR/usr/bin/slouchup" "$@"

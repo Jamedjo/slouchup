@@ -22,18 +22,27 @@ inside=${webkit#/usr}
 mkdir -p "$appdir/usr$inside"
 cp -r "$webkit"/WebKit*Process "$webkit"/injected-bundle "$appdir/usr$inside/"
 
-# The tray library is loaded while the app runs, so linuxdeploy can't tell it's needed. The
-# system's copy can need a newer GLib than the one bundled, so it's bundled too.
+# The tray library and libgtk-layer-shell are loaded while the app runs, so linuxdeploy can't tell
+# they're needed. The system's copies can need a newer GLib than the one bundled, so they're bundled
+# too, and the popover is anchored to the panel on Wayland desktops that don't have the library.
 tray=$(pkg-config --variable=libdir ayatana-appindicator3-0.1)/libayatana-appindicator3.so.1
+layer=$(pkg-config --variable=libdir gtk-layer-shell-0)/libgtk-layer-shell.so.0
 
 linuxdeploy --appdir "$appdir" \
     --executable target/release/slouchup \
     --library "$tray" \
+    --library "$layer" \
     --desktop-file "packaging/linux/$id.desktop" \
     --icon-file "target/release/$id.png" \
     --deploy-deps-only "$appdir/usr$inside" \
     --plugin gtk
 sed -i "s|$webkit|././$inside|g" "$appdir"/usr/lib/libwebkit2gtk-4.1.so*
+
+# The GTK plugin's hook makes GTK use X11 everywhere. Under XWayland the popover can't be anchored to
+# the panel, and with an output past X11's 16-bit coordinates it takes no clicks, so AppRun leaves
+# the choice to GTK.
+hook="$appdir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+sed -i '/GDK_BACKEND/d' "$hook"
 
 version=$(cargo pkgid -p slouchup | sed 's/.*[#@]//')
 echo "X-AppImage-Version=$version" >> "$appdir/$id.desktop"

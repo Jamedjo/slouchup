@@ -96,9 +96,11 @@ runs all three; see [RELEASE.md](RELEASE.md).
   the .NET SDK and `vpk` at the same version as the `velopack` crate
   (`dotnet tool install --global vpk --version <version>`).
 - **Linux**: `packaging/linux/appimage.sh` builds `velopack/slouchup-x86_64.AppImage`, with
-  linuxdeploy and its GTK plugin, `vpk` and mksquashfs. It bundles WebKit's helper processes and
-  the tray library, which linuxdeploy can't find on its own. CI builds it on Ubuntu 22.04, so it
-  runs on distributions with an older glibc.
+  linuxdeploy and its GTK plugin, `vpk` and mksquashfs. It bundles WebKit's helper processes, the
+  tray library and libgtk-layer-shell (`libgtk-layer-shell-dev`), which linuxdeploy can't find on
+  its own. The GTK plugin's hook would make GTK use X11 everywhere; the script takes that out, so
+  the AppImage runs on Wayland where there is one, except on GNOME. CI builds it on Ubuntu 22.04,
+  so it runs on distributions with an older glibc.
 - **macOS**: `packaging/macos/bundle.sh` builds `SlouchUp.app` for Apple silicon and Intel, and
   `slouchup-mac.dmg` to install it from. It needs both Rust targets
   (`rustup target add aarch64-apple-darwin x86_64-apple-darwin`). macOS only grants camera access

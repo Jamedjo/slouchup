@@ -62,11 +62,11 @@ Each commit is a change in behaviour, not a step in the work. Fold fix-ups into 
 
 ## Pull request descriptions
 
-The description is the review document. The title is the subject, Why and What come from the commit message, and Try it is what a reviewer needs to see the change. Sections after What appear only when there is something to put in them.
+The description is the review document. The title is the subject, Why and What come from the commit message, and Try it is what a reviewer needs to see the change. Why comes first so a reviewer knows what the change is for before reading what it does. It is one line so the reviewer gets the reason without extra context to hold. Sections after What appear only when there is something to put in them.
 
 ```markdown
 ## Why
-What someone needed, or what went wrong before. One short paragraph.
+One line on why this was worth doing.
 
 ## What
 One sentence on the change, then bullets only if it needs them.
